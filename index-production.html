@@ -222,11 +222,11 @@
             <button id="interrupt-btn" class="btn" disabled>中断对话</button>
         </div>
 
-        <!-- 动作控制 -->
+        <!-- 状态控制 -->
         <div class="control-group">
-            <h3>💃 动作表情</h3>
+            <h3>💃 状态控制</h3>
             <div id="motions-container">
-                <!-- 动作按钮将在这里动态生成 -->
+                <!-- 状态按钮将在这里动态生成 -->
             </div>
         </div>
 
@@ -284,6 +284,8 @@
                 this.model = null;
                 this.canvas = document.getElementById('live2d-canvas');
                 this.isLoaded = false;
+                this.idleReturnTimer = null; // 自动回归待机的定时器
+                this.initialStateSnapshot = null; // 初始状态快照
             }
 
             async init() {
@@ -362,6 +364,9 @@
                     this.app.stage.addChild(this.model);
                     this.positionModel();
 
+                    // 保存初始状态快照
+                    this.saveInitialState();
+
                     console.log('✓ Live2D模型加载成功');
                 } catch (error) {
                     console.error('模型加载失败:', error);
@@ -396,7 +401,8 @@
                     { name: '开心', group: '', index: 2 },
                     { name: '生气', group: '', index: 3 },
                     { name: '眨眼', group: '', index: 4 },
-                    { name: '摇头', group: '', index: 5 }
+                    { name: '摇头', group: '', index: 5 },
+                    { name: '说话', action: 'talk' }
                 ];
 
                 // 生成动作按钮
@@ -404,7 +410,14 @@
                     const btn = document.createElement('button');
                     btn.className = 'btn small';
                     btn.textContent = motion.name;
-                    btn.onclick = () => this.playMotion(motion.group, motion.index);
+                    btn.onclick = () => {
+                        if (motion.action === 'talk') {
+                            // 特殊处理说话动作
+                            this.apiPlayTalk();
+                        } else {
+                            this.playMotion(motion.group, motion.index);
+                        }
+                    };
                     motionsContainer.appendChild(btn);
                 });
 
@@ -429,7 +442,7 @@
                 });
             }
 
-            playMotion(group, index = 0) {
+            playMotion(group, index = 0, skipIdleReturn = false) {
                 if (this.model && this.model.internalModel) {
                     try {
                         // 使用pixi-live2d-display的motion方法，传入组名和索引
@@ -441,17 +454,50 @@
                         if (statusEl) {
                             statusEl.textContent = `播放动作: 索引 ${index}`;
                         }
+
+                        // 如果不是待机动作且没有跳过回归，则设置自动回到待机
+                        if (!skipIdleReturn && !(group === '' && index === 0)) {
+                            this.scheduleIdleReturn();
+                        }
                     } catch (error) {
                         console.error('播放动作失败:', error);
                         // 尝试其他方式
                         try {
                             console.log('尝试备用方法...');
                             this.model.internalModel.motionManager.startMotion(group, index);
+                            
+                            // 备用方法成功时也设置回到待机
+                            if (!skipIdleReturn && !(group === '' && index === 0)) {
+                                this.scheduleIdleReturn();
+                            }
                         } catch (fallbackError) {
                             console.error('备用方法也失败:', fallbackError);
                         }
                     }
                 }
+            }
+
+            // 安排回到待机动作
+            scheduleIdleReturn() {
+                // 清除之前的定时器
+                if (this.idleReturnTimer) {
+                    clearTimeout(this.idleReturnTimer);
+                }
+                
+                // 设置新的定时器，3秒后回到待机
+                this.idleReturnTimer = setTimeout(() => {
+                    try {
+                        this.playMotion('', 0, true); // skipIdleReturn = true 避免循环
+                        console.log('自动回归待机动作');
+                        
+                        const statusEl = document.getElementById('status');
+                        if (statusEl) {
+                            statusEl.textContent = '已回归待机状态';
+                        }
+                    } catch (error) {
+                        console.error('自动回归待机失败:', error);
+                    }
+                }, 3000); // 3秒后回到待机
             }
 
             playExpression(expressionName) {
@@ -466,19 +512,936 @@
                         if (statusEl) {
                             statusEl.textContent = `播放表情: ${expressionName}`;
                         }
+
+                        // 表情播放后不自动回归（移除表情重置功能）
+                        // this.scheduleIdleReturnWithExpression();
                     } catch (error) {
                         console.error('播放表情失败:', error);
                     }
                 }
             }
 
-            // 全局方法
+            // 表情回归相关方法已移除，保持表情状态不自动重置
+
+            // 保存初始状态快照
+            saveInitialState() {
+                if (!this.model || !this.model.internalModel) {
+                    console.error('模型未加载，无法保存初始状态');
+                    return;
+                }
+
+                try {
+                    console.log('💾 保存初始状态快照...');
+                    
+                    const coreModel = this.model.internalModel.coreModel;
+                    const parameterCount = coreModel.getParameterCount();
+                    
+                    // 保存所有参数的初始值
+                    const parameters = [];
+                    for (let i = 0; i < parameterCount; i++) {
+                        const paramId = coreModel._parameterIds[i];
+                        const value = coreModel.getParameterValueByIndex(i);
+                        const defaultValue = coreModel.getParameterDefaultValue(i);
+                        
+                        parameters.push({
+                            index: i,
+                            id: paramId,
+                            value: value,
+                            defaultValue: defaultValue
+                        });
+                    }
+
+                    // 保存Part透明度
+                    const parts = [];
+                    const partCount = coreModel.getPartCount();
+                    for (let i = 0; i < partCount; i++) {
+                        parts.push({
+                            index: i,
+                            opacity: coreModel.getPartOpacityByIndex(i)
+                        });
+                    }
+
+                    // 保存表情管理器状态
+                    let expressionState = null;
+                    try {
+                        if (this.model.internalModel.motionManager && this.model.internalModel.motionManager.expressionManager) {
+                            expressionState = {
+                                currentExpression: null, // 初始状态没有表情
+                                reserveExpressionIndex: -1
+                            };
+                        }
+                    } catch (e) {
+                        console.log('表情管理器状态获取跳过');
+                    }
+
+                    // 创建完整快照
+                    this.initialStateSnapshot = {
+                        timestamp: Date.now(),
+                        parameters: parameters,
+                        parts: parts,
+                        expressionState: expressionState,
+                        modelPosition: {
+                            x: this.model.x,
+                            y: this.model.y,
+                            scaleX: this.model.scale.x,
+                            scaleY: this.model.scale.y
+                        }
+                    };
+
+                    console.log(`✅ 初始状态快照已保存: ${parameters.length}个参数, ${parts.length}个部件`);
+                    console.log('快照详情:', this.initialStateSnapshot);
+
+                } catch (error) {
+                    console.error('保存初始状态失败:', error);
+                }
+            }
+
+            // 恢复初始状态快照
+            restoreInitialState() {
+                if (!this.initialStateSnapshot) {
+                    console.error('没有找到初始状态快照');
+                    return;
+                }
+
+                if (!this.model || !this.model.internalModel) {
+                    console.error('模型未加载，无法恢复状态');
+                    return;
+                }
+
+                try {
+                    console.log('🔄 开始恢复初始状态...');
+                    
+                    const coreModel = this.model.internalModel.coreModel;
+                    const snapshot = this.initialStateSnapshot;
+
+                    // 恢复所有参数值
+                    console.log('恢复参数值...');
+                    snapshot.parameters.forEach(param => {
+                        try {
+                            // 使用初始时的实际值，不是默认值
+                            coreModel.setParameterValueByIndex(param.index, param.value);
+                            console.log(`恢复参数 ${param.id}: ${param.value}`);
+                        } catch (e) {
+                            console.warn(`参数${param.id}恢复失败:`, e.message);
+                        }
+                    });
+
+                    // 恢复Part透明度
+                    console.log('恢复部件透明度...');
+                    snapshot.parts.forEach(part => {
+                        try {
+                            coreModel.setPartOpacityByIndex(part.index, part.opacity);
+                        } catch (e) {
+                            console.warn(`部件${part.index}透明度恢复失败:`, e.message);
+                        }
+                    });
+
+                    // 清除表情状态
+                    console.log('清除表情状态...');
+                    try {
+                        this.model.expression('');
+                        this.model.expression(null);
+                    } catch (e) {
+                        console.log('表情清除跳过:', e.message);
+                    }
+
+                    // 强制更新模型多帧
+                    console.log('强制更新模型渲染...');
+                    for (let frame = 0; frame < 10; frame++) {
+                        try {
+                            if (this.model.internalModel.motionManager) {
+                                this.model.internalModel.motionManager.update(0.016);
+                            }
+                            if (this.model.update) {
+                                this.model.update(0.016);
+                            }
+                        } catch (e) {
+                            // 忽略更新错误
+                        }
+                    }
+
+                    // 恢复模型位置（虽然通常不会变）
+                    if (snapshot.modelPosition) {
+                        this.model.x = snapshot.modelPosition.x;
+                        this.model.y = snapshot.modelPosition.y;
+                        this.model.scale.set(snapshot.modelPosition.scaleX, snapshot.modelPosition.scaleY);
+                    }
+
+                    // 延迟播放待机动作确保状态稳定
+                    setTimeout(() => {
+                        this.playMotion('', 0, true); // skipIdleReturn = true 避免循环
+                        console.log('✨ 初始状态快照恢复完成');
+                        
+                        const statusEl = document.getElementById('status');
+                        if (statusEl) {
+                            statusEl.textContent = '已回归待机状态';
+                        }
+                    }, 100);
+
+                } catch (error) {
+                    console.error('恢复初始状态失败:', error);
+                    // 备用方案：尝试基础重置
+                    try {
+                        this.model.expression('');
+                        this.playMotion('', 0, true);
+                    } catch (fallbackError) {
+                        console.error('备用方案也失败:', fallbackError);
+                    }
+                }
+            }
+
+            // 平滑渐变重置表情到初始状态
+            smoothResetExpression() {
+                if (!this.model || !this.model.internalModel) {
+                    console.error('模型未加载，无法进行渐变重置');
+                    return;
+                }
+
+                try {
+                    const coreModel = this.model.internalModel.coreModel;
+                    const duration = 500; // 渐变持续时间500ms
+                    const frameRate = 60; // 60FPS
+                    const totalFrames = Math.floor(duration / (1000 / frameRate));
+                    let currentFrame = 0;
+
+                    console.log(`🎬 渐变重置动画：${totalFrames}帧，持续${duration}ms`);
+
+                    // 收集需要重置的表情参数的初始状态
+                    const expressionParams = [];
+                    const expressionParamNames = ['axy', 'axy2', 'shengqi', 'shengqi2', 'xxy', 'xxy2', 'kuku', 'kuku2', 'mkf', 'waitao'];
+                    
+                    for (let i = 0; i < expressionParamNames.length; i++) {
+                        const paramName = expressionParamNames[i];
+                        const currentValue = coreModel.getParameterValueByIndex(i);
+                        const defaultValue = coreModel.getParameterDefaultValue(i);
+                        
+                        if (Math.abs(currentValue - defaultValue) > 0.001) {
+                            expressionParams.push({
+                                index: i,
+                                name: paramName,
+                                startValue: currentValue,
+                                targetValue: defaultValue
+                            });
+                            console.log(`📊 参数 ${paramName}: ${currentValue} → ${defaultValue}`);
+                        }
+                    }
+
+                    if (expressionParams.length === 0) {
+                        console.log('⚠️  参数已是默认值，但可能存在视觉同步问题，强制刷新渲染');
+                        // 即使参数是默认值，也要强制视觉同步
+                        this.forceVisualSync();
+                        return;
+                    }
+
+                    // 创建平滑动画函数
+                    const animateFrame = () => {
+                        currentFrame++;
+                        const progress = currentFrame / totalFrames;
+                        
+                        // 使用缓出函数创建更自然的动画曲线
+                        const easeOut = 1 - Math.pow(1 - progress, 3);
+                        
+                        // 更新每个需要重置的参数
+                        expressionParams.forEach(param => {
+                            const currentVal = param.startValue + (param.targetValue - param.startValue) * easeOut;
+                            coreModel.setParameterValueByIndex(param.index, currentVal);
+                        });
+
+                        // 强制更新模型渲染
+                        if (this.model.internalModel.motionManager) {
+                            this.model.internalModel.motionManager.update(0.016);
+                        }
+                        if (this.model.update) {
+                            this.model.update(0.016);
+                        }
+
+                        // 继续动画或完成
+                        if (currentFrame < totalFrames) {
+                            requestAnimationFrame(animateFrame);
+                        } else {
+                            console.log('🎯 渐变重置完成');
+                            this.finalizeExpressionReset();
+                        }
+                    };
+
+                    // 开始动画
+                    requestAnimationFrame(animateFrame);
+
+                } catch (error) {
+                    console.error('渐变重置失败:', error);
+                    // 备用方案：直接重置
+                    this.resetExpressionParameters();
+                }
+            }
+
+            // 强制视觉同步 - 解决参数正确但视觉未更新的问题
+            forceVisualSync() {
+                console.log('🔄 强制视觉同步开始...');
+                
+                try {
+                    const coreModel = this.model.internalModel.coreModel;
+                    
+                    // 方法1: 通过微小扰动强制更新视觉
+                    console.log('方法1: 微扰动同步');
+                    const expressionParamNames = ['axy', 'axy2', 'shengqi', 'shengqi2', 'xxy', 'xxy2', 'kuku', 'kuku2', 'mkf', 'waitao'];
+                    
+                    expressionParamNames.forEach((paramName, index) => {
+                        const defaultValue = coreModel.getParameterDefaultValue(index);
+                        
+                        // 先设置一个极小的偏移值，再设回默认值，强制触发更新
+                        coreModel.setParameterValueByIndex(index, defaultValue + 0.001);
+                        coreModel.setParameterValueByIndex(index, defaultValue - 0.001);
+                        coreModel.setParameterValueByIndex(index, defaultValue);
+                        
+                        console.log(`微扰动: ${paramName} = ${defaultValue}`);
+                    });
+                    
+                    // 方法2: 强制多次更新渲染
+                    console.log('方法2: 强制渲染更新');
+                    for (let frame = 0; frame < 30; frame++) {
+                        // 更新motionManager
+                        if (this.model.internalModel.motionManager) {
+                            this.model.internalModel.motionManager.update(0.016);
+                        }
+                        
+                        // 更新模型
+                        if (this.model.update) {
+                            this.model.update(0.016);
+                        }
+                        
+                        // 更新内部模型
+                        if (this.model.internalModel.update) {
+                            this.model.internalModel.update(0.016);
+                        }
+                    }
+                    
+                    // 方法3: 强制表情API多次调用
+                    console.log('方法3: 表情API强制重置');
+                    try {
+                        this.model.expression('');
+                        this.model.expression(null);
+                        this.model.expression('');
+                        
+                        // 再次更新渲染
+                        for (let i = 0; i < 10; i++) {
+                            if (this.model.internalModel.motionManager) {
+                                this.model.internalModel.motionManager.update(0.016);
+                            }
+                        }
+                    } catch (e) {
+                        console.log('表情API调用异常:', e.message);
+                    }
+                    
+                    // 方法4: PIXI强制重绘
+                    console.log('方法4: PIXI强制重绘');
+                    if (this.app) {
+                        this.app.render();
+                        if (this.app.ticker) {
+                            this.app.ticker.update();
+                        }
+                    }
+                    
+                    // 方法5: 延迟多次确认
+                    setTimeout(() => {
+                        console.log('延迟确认视觉同步...');
+                        for (let i = 0; i < 5; i++) {
+                            if (this.model.update) this.model.update(0.016);
+                        }
+                        
+                        // 最后播放待机动作
+                        setTimeout(() => {
+                            this.playMotion('', 0, true);
+                            console.log('🎯 强制视觉同步完成');
+                        }, 100);
+                    }, 200);
+                    
+                } catch (error) {
+                    console.error('强制视觉同步失败:', error);
+                }
+            }
+
+            // 完成表情重置后的最终处理
+            finalizeExpressionReset() {
+                try {
+                    // 最终确保所有参数都是精确的默认值
+                    const coreModel = this.model.internalModel.coreModel;
+                    const expressionParamNames = ['axy', 'axy2', 'shengqi', 'shengqi2', 'xxy', 'xxy2', 'kuku', 'kuku2', 'mkf', 'waitao'];
+                    
+                    expressionParamNames.forEach((paramName, index) => {
+                        const defaultValue = coreModel.getParameterDefaultValue(index);
+                        coreModel.setParameterValueByIndex(index, defaultValue);
+                    });
+
+                    // 额外的表情API重置
+                    this.model.expression('');
+                    this.model.expression(null);
+
+                    // 强制更新几帧确保生效
+                    for (let i = 0; i < 5; i++) {
+                        if (this.model.internalModel.motionManager) {
+                            this.model.internalModel.motionManager.update(0.016);
+                        }
+                        if (this.model.update) {
+                            this.model.update(0.016);
+                        }
+                    }
+
+                    // 延迟播放待机动作
+                    setTimeout(() => {
+                        this.playMotion('', 0, true); // skipIdleReturn = true 避免循环
+                        console.log('✨ 表情渐变重置完成，已回归待机状态');
+                        
+                        const statusEl = document.getElementById('status');
+                        if (statusEl) {
+                            statusEl.textContent = '已回归待机状态';
+                        }
+                    }, 100);
+
+                } catch (error) {
+                    console.error('最终重置处理失败:', error);
+                }
+            }
+
+            // 参数重置方法 - 直接重置表情参数，避免模型闪烁
+            resetExpressionParameters() {
+                if (!this.model || !this.model.internalModel) {
+                    console.error('模型未加载，无法重置表情参数');
+                    return;
+                }
+
+                try {
+                    console.log('🔄 开始重置表情参数...');
+                    console.log('模型对象:', this.model);
+                    console.log('内部模型:', this.model.internalModel);
+                    
+                    // 先尝试所有已知的重置方法
+                    let success = false;
+                    
+                    // 方法1: 使用Live2D Core API直接重置参数
+                    const coreModel = this.model.internalModel.coreModel;
+                    console.log('Core模型:', coreModel);
+                    
+                    if (coreModel) {
+                        const parameterCount = coreModel.getParameterCount();
+                        console.log(`发现 ${parameterCount} 个参数`);
+                        let resetCount = 0;
+                        
+                        // 先检查Core模型的可用方法
+                        console.log('=== Core模型可用方法 ===');
+                        console.log('Core模型属性:', Object.keys(coreModel));
+                        console.log('Core模型方法:', Object.getOwnPropertyNames(Object.getPrototypeOf(coreModel)));
+                        
+                        // 尝试不同的API方法名称
+                        const possibleMethods = [
+                            'getParameterId', 'getParameterIds', '_parameterIds',
+                            'getParameterDefaultValue', 'getParameterDefaultValues', '_parameterDefaultValues',
+                            'getParameterValue', 'getParameterValues', '_parameterValues',
+                            'setParameterValue', 'setParameterValues'
+                        ];
+                        
+                        console.log('=== 检查API方法可用性 ===');
+                        possibleMethods.forEach(method => {
+                            console.log(`${method}: ${typeof coreModel[method]}`);
+                        });
+                        
+                        // 使用正确的API方法重置参数
+                        console.log('=== 使用正确API重置参数 ===');
+                        
+                        for (let i = 0; i < parameterCount; i++) {
+                            try {
+                                // 使用正确的API获取参数信息
+                                const parameterId = coreModel._parameterIds[i];
+                                const currentValue = coreModel.getParameterValueByIndex(i);
+                                const defaultValue = coreModel.getParameterDefaultValue(i);
+                                
+                                // 只显示前20个参数的详细信息，避免日志过多
+                                if (i < 20) {
+                                    console.log(`参数${i}: ${parameterId}`);
+                                    console.log(`  当前值: ${currentValue}, 默认值: ${defaultValue}`);
+                                }
+                                
+                                // 检查是否是表情相关参数并需要重置
+                                const isExpressionParam = this.isExpressionParameterByName(parameterId);
+                                const needsReset = Math.abs(currentValue - defaultValue) > 0.001;
+                                
+                                if (isExpressionParam && needsReset) {
+                                    console.log(`🎯 重置表情参数: ${parameterId} ${currentValue} → ${defaultValue}`);
+                                    coreModel.setParameterValueByIndex(i, defaultValue);
+                                    resetCount++;
+                                    success = true;
+                                } else if (needsReset && i < 20) {
+                                    console.log(`⏭️  跳过非表情参数: ${parameterId}`);
+                                }
+                                
+                            } catch (e) {
+                                if (i < 5) { // 只显示前几个错误
+                                    console.error(`参数${i}处理失败:`, e.message);
+                                }
+                            }
+                        }
+                        
+                        console.log(`✓ 参数扫描完成，重置了 ${resetCount} 个参数`);
+                    }
+                    
+                    // 方法2: pixi-live2d-display的表情API
+                    try {
+                        console.log('尝试表情API重置...');
+                        this.model.expression(''); // 空字符串应该清除表情
+                        this.model.expression(null); // null值重置
+                        console.log('✓ 表情API调用完成');
+                        success = true;
+                    } catch (e) {
+                        console.error('表情API重置失败:', e);
+                    }
+                    
+                    // 方法3: 表情管理器重置
+                    try {
+                        console.log('检查表情管理器...');
+                        const motionManager = this.model.internalModel.motionManager;
+                        console.log('Motion管理器:', motionManager);
+                        
+                        if (motionManager) {
+                            // 查找表情管理器
+                            if (motionManager.expressionManager) {
+                                console.log('找到表情管理器:', motionManager.expressionManager);
+                                motionManager.expressionManager.setExpression(null);
+                                success = true;
+                            }
+                            
+                            // 强制更新多帧确保生效
+                            for (let i = 0; i < 5; i++) {
+                                motionManager.update(0.016);
+                            }
+                            console.log('✓ 强制更新5帧完成');
+                        }
+                    } catch (e) {
+                        console.error('表情管理器重置失败:', e);
+                    }
+                    
+                    // 方法4: 强制刷新模型显示 - 多种方法组合
+                    try {
+                        console.log('🔄 强制刷新模型显示...');
+                        
+                        // 强制更新多帧确保参数生效到视觉层
+                        for (let frame = 0; frame < 10; frame++) {
+                            if (this.model.update) {
+                                this.model.update(0.016);
+                            }
+                            if (this.model.internalModel && this.model.internalModel.update) {
+                                this.model.internalModel.update(0.016);
+                            }
+                        }
+                        
+                        // 强制重绘
+                        if (this.model._refresh) {
+                            this.model._refresh();
+                        }
+                        
+                        // 触发渲染器更新
+                        if (this.app && this.app.render) {
+                            this.app.render();
+                        }
+                        
+                        // 强制PIXI重绘
+                        if (this.model.texture) {
+                            this.model.texture.update();
+                        }
+                        
+                        console.log('✓ 模型强制刷新完成(10帧)');
+                    } catch (e) {
+                        console.error('模型刷新失败:', e);
+                    }
+                    
+                    // 方法5: 延迟再次确认重置
+                    setTimeout(() => {
+                        try {
+                            console.log('🔍 延迟验证重置效果...');
+                            
+                            // 再次检查关键表情参数的值
+                            const keyParams = ['shengqi', 'shengqi2', 'axy', 'axy2', 'xxy', 'xxy2', 'kuku', 'kuku2'];
+                            keyParams.forEach((paramName, index) => {
+                                const currentValue = coreModel.getParameterValueByIndex(index);
+                                const defaultValue = coreModel.getParameterDefaultValue(index);
+                                console.log(`验证 ${paramName}: 当前=${currentValue}, 默认=${defaultValue}`);
+                                
+                                // 如果仍有差异，再次强制重置
+                                if (Math.abs(currentValue - defaultValue) > 0.001) {
+                                    coreModel.setParameterValueByIndex(index, defaultValue);
+                                    console.log(`🔧 二次重置: ${paramName}`);
+                                }
+                            });
+                            
+                            // 再次强制更新
+                            for (let i = 0; i < 5; i++) {
+                                if (this.model.update) this.model.update(0.016);
+                            }
+                            
+                            console.log('✅ 延迟验证完成');
+                            
+                        } catch (e) {
+                            console.error('延迟验证失败:', e);
+                        }
+                    }, 500); // 500ms后验证
+                    
+                    if (success) {
+                        console.log('🎉 表情重置操作已执行');
+                    } else {
+                        console.error('❌ 所有重置方法都失败了');
+                        // 最后的备用方案
+                        this.fallbackExpressionReset();
+                    }
+
+                } catch (error) {
+                    console.error('❌ 表情参数重置过程出错:', error);
+                    this.fallbackExpressionReset();
+                }
+            }
+
+            // 备用表情重置方案
+            fallbackExpressionReset() {
+                console.log('🚨 使用最后的备用方案...');
+                try {
+                    // 尝试播放一个"空"的表情动作
+                    if (this.model.motion) {
+                        this.model.motion('', 0); // 播放待机动作来覆盖表情
+                    }
+                    
+                    // 等待一点时间再播放标准待机
+                    setTimeout(() => {
+                        if (this.model.motion) {
+                            this.model.motion('', 0);
+                            console.log('✓ 备用方案：播放待机动作');
+                        }
+                    }, 100);
+                    
+                } catch (e) {
+                    console.error('备用方案也失败:', e);
+                }
+            }
+
+            // 判断参数是否与表情相关（基于实际模型参数名）
+            isExpressionParameterByName(parameterId) {
+                // 根据控制台输出，这个模型的表情参数名称
+                const expressionParams = [
+                    'axy',        // 爱心眼
+                    'axy2',       // 爱心眼2
+                    'shengqi',    // 生气
+                    'shengqi2',   // 生气2  
+                    'xxy',        // 星星眼
+                    'xxy2',       // 星星眼2
+                    'kuku',       // 哭哭
+                    'kuku2',      // 哭哭2
+                    'mkf',        // 麦克风
+                    'waitao',     // 外套
+                    'shetou'      // 舌头 (从模型文件推测)
+                ];
+                
+                return expressionParams.includes(parameterId);
+            }
+
+            // 原来的通用表情参数检测方法（备用）
+            isExpressionParameter(parameterId) {
+                // Live2D表情通常会影响这些参数
+                const expressionKeywords = [
+                    'ParamEyeL',      // 左眼相关
+                    'ParamEyeR',      // 右眼相关
+                    'ParamEyeBallX',  // 眼球X
+                    'ParamEyeBallY',  // 眼球Y
+                    'ParamBrowL',     // 左眉毛
+                    'ParamBrowR',     // 右眉毛
+                    'ParamMouth',     // 嘴部
+                    'ParamCheek',     // 脸颊
+                    'ParamFace',      // 脸部表情
+                    'ParamTears',     // 眼泪
+                    'ParamSweat',     // 汗水
+                    'Param',          // 通用参数前缀
+                    'Eye',            // 眼睛相关
+                    'Mouth',          // 嘴巴相关
+                    'Brow',           // 眉毛相关
+                    'Face'            // 脸部相关
+                ];
+                
+                return expressionKeywords.some(keyword => 
+                    parameterId.includes(keyword)
+                );
+            }
+
+            // ========== API调用方法 ==========
+            
+            // 状态调用API
+            apiPlayIdle() {
+                this.playMotion('', 0);
+                return { success: true, message: '播放待机状态', action: 'idle' };
+            }
+
+            apiPlayJingya() {
+                this.playMotion('', 1);
+                return { success: true, message: '播放惊讶状态', action: 'jingya' };
+            }
+
+            apiPlayKaixin() {
+                this.playMotion('', 2);
+                return { success: true, message: '播放开心状态', action: 'kaixin' };
+            }
+
+            apiPlayShengqi() {
+                this.playMotion('', 3);
+                return { success: true, message: '播放生气状态', action: 'shengqi' };
+            }
+
+            apiPlayWink() {
+                this.playMotion('', 4);
+                return { success: true, message: '播放眨眼状态', action: 'wink' };
+            }
+
+            apiPlayYaotou() {
+                this.playMotion('', 5);
+                return { success: true, message: '播放摇头状态', action: 'yaotou' };
+            }
+
+            apiPlayTalk() {
+                // 说话动作通过LipSync参数实现嘴部动作
+                if (!this.model) {
+                    return { success: false, message: '模型未加载', error: 'MODEL_NOT_READY' };
+                }
+                
+                // 尝试直接控制嘴部参数
+                try {
+                    console.log('🗣️ 开始调试说话动作...');
+                    console.log('模型结构:', this.model);
+                    console.log('内部模型:', this.model.internalModel);
+                    
+                    // 收集所有嘴部相关参数
+                    let mouthParams = [];
+                    
+                    // 方法1: 尝试通过PIXI Live2D的接口
+                    if (this.model.internalModel && this.model.internalModel.coreModel) {
+                        const coreModel = this.model.internalModel.coreModel;
+                        console.log('Core Model:', coreModel);
+                        
+                        // 尝试获取参数信息
+                        try {
+                            const paramCount = coreModel.getParameterCount ? coreModel.getParameterCount() : 0;
+                            console.log('参数总数:', paramCount);
+                            
+                            if (paramCount > 0) {
+                                console.log('🔍 开始搜索所有嘴部参数...');
+                                // 搜索所有168个参数，寻找所有嘴部相关的
+                                for (let i = 0; i < paramCount; i++) {
+                                    try {
+                                        // 获取参数名
+                                        let paramId = null;
+                                        if (coreModel._parameterIds && coreModel._parameterIds[i]) {
+                                            paramId = coreModel._parameterIds[i];
+                                        }
+                                        
+                                        if (paramId) {
+                                            // 搜索嘴部相关参数 - 扩展搜索范围
+                                            if (paramId.toLowerCase().includes('mouth') || 
+                                                paramId.toLowerCase().includes('lip') ||
+                                                paramId.includes('口') || 
+                                                paramId.includes('PARAM_MOUTH') ||
+                                                paramId.includes('ParamMouth') ||
+                                                paramId.toLowerCase().includes('嘴') ||
+                                                // 根据你的模型参数，可能还有其他中文参数
+                                                paramId.includes('嘴') ||
+                                                paramId.includes('mouth') ||
+                                                paramId.includes('Mouth')) {
+                                                
+                                                const originalValue = coreModel.getParameterValueByIndex(i);
+                                                const minValue = coreModel.getParameterMinimumValue(i);
+                                                const maxValue = coreModel.getParameterMaximumValue(i);
+                                                
+                                                mouthParams.push({
+                                                    index: i,
+                                                    name: paramId,
+                                                    originalValue: originalValue,
+                                                    minValue: minValue,
+                                                    maxValue: maxValue
+                                                });
+                                                
+                                                console.log(`🎯 找到嘴部参数: ${paramId} (索引:${i}) 当前值:${originalValue} 范围:[${minValue}, ${maxValue}]`);
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.warn(`获取参数 ${i} 失败:`, e);
+                                    }
+                                }
+                                
+                                console.log(`✅ 找到 ${mouthParams.length} 个嘴部相关参数:`, mouthParams);
+                                
+                                // 如果找到嘴部参数，创建说话动画
+                                if (mouthParams.length > 0) {
+                                    let animationStep = 0;
+                                    const talkAnimation = setInterval(() => {
+                                        // 为每个嘴部参数创建不同的动画
+                                        mouthParams.forEach((param, index) => {
+                                            let value;
+                                            const range = param.maxValue - param.minValue;
+                                            const mid = param.minValue + range * 0.5;
+                                            
+                                            if (param.name.includes('Form') || param.name.includes('form')) {
+                                                // 嘴形参数：创建周期性变化
+                                                value = mid + Math.sin(animationStep * 0.7 + index) * range * 0.4;
+                                            } else if (param.name.includes('Open') || param.name.includes('open')) {
+                                                // 开口参数：随机开合
+                                                value = param.minValue + (Math.sin(animationStep * 0.8) * 0.5 + 0.5) * range * 0.8;
+                                            } else {
+                                                // 其他嘴部参数：轻微变化
+                                                value = mid + Math.sin(animationStep * 0.6 + index * 0.5) * range * 0.3;
+                                            }
+                                            
+                                            // 确保值在有效范围内
+                                            value = Math.max(param.minValue, Math.min(param.maxValue, value));
+                                            coreModel.setParameterValueByIndex(param.index, value);
+                                        });
+                                        
+                                        animationStep++;
+                                        
+                                        if (animationStep > 40) { // 约3.2秒动画
+                                            clearInterval(talkAnimation);
+                                            // 恢复所有参数的原始值
+                                            mouthParams.forEach(param => {
+                                                coreModel.setParameterValueByIndex(param.index, param.originalValue);
+                                            });
+                                            console.log('🔄 说话动画结束，恢复原始嘴形');
+                                        }
+                                    }, 80);
+                                }
+                            }
+                        } catch (e) {
+                            console.error('获取参数数量失败:', e);
+                        }
+                    }
+                    
+                    if (mouthParams.length === 0) {
+                        console.log('⚠️ 未找到嘴部参数，使用眨眼替代动作');
+                        // 简单的替代动作 - 播放眨眼动作
+                        this.playMotion('', 4); // 播放眨眼动作
+                        return { success: true, message: '播放说话动作(眨眼替代)', action: 'talk' };
+                    }
+                    
+                    return { success: true, message: '播放说话动作', action: 'talk' };
+                    
+                } catch (error) {
+                    console.error('💥 说话动作实现失败:', error);
+                    console.error('错误堆栈:', error.stack);
+                    // 使用待机动作作为最终替代
+                    this.playMotion('', 0);
+                    return { success: true, message: '播放说话动作(错误替代)', action: 'talk' };
+                }
+            }
+
+            // 表情调用API
+            apiPlayLoveEyes() {
+                this.playExpression('A1爱心眼');
+                return { success: true, message: '播放爱心眼表情', expression: 'love_eyes' };
+            }
+
+            apiPlayAngryFace() {
+                this.playExpression('A2生气');
+                return { success: true, message: '播放生气表情', expression: 'angry' };
+            }
+
+            apiPlayStarEyes() {
+                this.playExpression('A3星星眼');
+                return { success: true, message: '播放星星眼表情', expression: 'star_eyes' };
+            }
+
+            apiPlayCrying() {
+                this.playExpression('A4哭哭');
+                return { success: true, message: '播放哭哭表情', expression: 'crying' };
+            }
+
+            apiPlayMicrophone() {
+                this.playExpression('B1麦克风');
+                return { success: true, message: '播放麦克风表情', expression: 'microphone' };
+            }
+
+            apiPlayCoat() {
+                this.playExpression('B2外套');
+                return { success: true, message: '播放外套表情', expression: 'coat' };
+            }
+
+            apiPlayTongue() {
+                this.playExpression('舌头');
+                return { success: true, message: '播放舌头表情', expression: 'tongue' };
+            }
+
+            // 通用API调用方法
+            apiCall(type, name) {
+                if (!this.isLoaded) {
+                    return { success: false, message: '模型未加载完成', error: 'MODEL_NOT_READY' };
+                }
+
+                try {
+                    if (type === 'action') {
+                        switch (name) {
+                            case 'idle': return this.apiPlayIdle();
+                            case 'jingya': return this.apiPlayJingya();
+                            case 'kaixin': return this.apiPlayKaixin();
+                            case 'shengqi': return this.apiPlayShengqi();
+                            case 'wink': return this.apiPlayWink();
+                            case 'yaotou': return this.apiPlayYaotou();
+                            case 'talk': return this.apiPlayTalk();
+                            default:
+                                return { success: false, message: `未知状态: ${name}`, error: 'UNKNOWN_ACTION' };
+                        }
+                    } else if (type === 'expression') {
+                        switch (name) {
+                            case 'love_eyes': return this.apiPlayLoveEyes();
+                            case 'angry': return this.apiPlayAngryFace();
+                            case 'star_eyes': return this.apiPlayStarEyes();
+                            case 'crying': return this.apiPlayCrying();
+                            case 'microphone': return this.apiPlayMicrophone();
+                            case 'coat': return this.apiPlayCoat();
+                            case 'tongue': return this.apiPlayTongue();
+                            default:
+                                return { success: false, message: `未知表情: ${name}`, error: 'UNKNOWN_EXPRESSION' };
+                        }
+                    } else {
+                        return { success: false, message: `未知类型: ${type}`, error: 'UNKNOWN_TYPE' };
+                    }
+                } catch (error) {
+                    console.error('API调用失败:', error);
+                    return { success: false, message: `调用失败: ${error.message}`, error: 'EXECUTION_FAILED' };
+                }
+            }
+
+            // 获取所有可用的状态和表情列表
+            apiGetAvailableList() {
+                return {
+                    success: true,
+                    data: {
+                        actions: [
+                            { id: 'idle', name: '待机', description: '回到待机状态' },
+                            { id: 'jingya', name: '惊讶', description: '表现惊讶的动作' },
+                            { id: 'kaixin', name: '开心', description: '表现开心的动作' },
+                            { id: 'shengqi', name: '生气', description: '表现生气的动作' },
+                            { id: 'wink', name: '眨眼', description: '眨眼动作' },
+                            { id: 'yaotou', name: '摇头', description: '摇头动作' },
+                            { id: 'talk', name: '说话', description: '说话时的嘴部动作' }
+                        ],
+                        expressions: [
+                            { id: 'love_eyes', name: '爱心眼', description: '爱心形状的眼睛表情' },
+                            { id: 'angry', name: '生气', description: '生气的面部表情' },
+                            { id: 'star_eyes', name: '星星眼', description: '星星形状的眼睛表情' },
+                            { id: 'crying', name: '哭哭', description: '哭泣的表情' },
+                            { id: 'microphone', name: '麦克风', description: '手持麦克风的表情' },
+                            { id: 'coat', name: '外套', description: '穿外套的装扮表情' },
+                            { id: 'tongue', name: '舌头', description: '吐舌头的表情' }
+                        ]
+                    }
+                };
+            }
+
+            // 原有的全局方法保持兼容
             playTalk() {
-                this.playMotion('talk', Math.floor(Math.random() * 3));
+                return this.apiPlayTalk();
             }
 
             playIdle() {
-                this.playMotion('idle', Math.floor(Math.random() * 3));
+                return this.apiPlayIdle();
             }
         }
 
@@ -911,17 +1874,73 @@
             }, 5000);
         }
 
-        // ========== 全局方法 ==========
+        // ========== 全局API接口 ==========
+        
+        // 调用状态或表情API
+        window.Live2DAPI = {
+            // 通用调用方法
+            call: function(type, name) {
+                if (live2dManager && live2dManager.isLoaded) {
+                    return live2dManager.apiCall(type, name);
+                } else {
+                    return { success: false, message: 'Live2D系统未初始化', error: 'SYSTEM_NOT_READY' };
+                }
+            },
+
+            // 状态调用方法
+            action: {
+                idle: () => Live2DAPI.call('action', 'idle'),
+                jingya: () => Live2DAPI.call('action', 'jingya'),
+                kaixin: () => Live2DAPI.call('action', 'kaixin'),
+                shengqi: () => Live2DAPI.call('action', 'shengqi'),
+                wink: () => Live2DAPI.call('action', 'wink'),
+                yaotou: () => Live2DAPI.call('action', 'yaotou'),
+                talk: () => Live2DAPI.call('action', 'talk')
+            },
+
+            // 表情调用方法
+            expression: {
+                love_eyes: () => Live2DAPI.call('expression', 'love_eyes'),
+                angry: () => Live2DAPI.call('expression', 'angry'),
+                star_eyes: () => Live2DAPI.call('expression', 'star_eyes'),
+                crying: () => Live2DAPI.call('expression', 'crying'),
+                microphone: () => Live2DAPI.call('expression', 'microphone'),
+                coat: () => Live2DAPI.call('expression', 'coat'),
+                tongue: () => Live2DAPI.call('expression', 'tongue')
+            },
+
+            // 获取可用列表
+            getAvailableList: function() {
+                if (live2dManager && live2dManager.isLoaded) {
+                    return live2dManager.apiGetAvailableList();
+                } else {
+                    return { success: false, message: 'Live2D系统未初始化', error: 'SYSTEM_NOT_READY' };
+                }
+            },
+
+            // 获取系统状态
+            getStatus: function() {
+                return {
+                    success: true,
+                    data: {
+                        isLoaded: live2dManager ? live2dManager.isLoaded : false,
+                        version: '2.0.0',
+                        timestamp: Date.now()
+                    }
+                };
+            }
+        };
+
+        // 兼容原有的全局方法
         function playTalk() {
             if (live2dManager.isLoaded) {
-                live2dManager.playTalk();
+                return live2dManager.playTalk();
             }
         }
 
-
         function playIdle() {
             if (live2dManager.isLoaded) {
-                live2dManager.playIdle();
+                return live2dManager.playIdle();
             }
         }
 

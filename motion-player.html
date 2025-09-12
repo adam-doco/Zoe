@@ -236,8 +236,9 @@
 
                 <div style="margin-top: 20px;">
                     <div class="section-title">播放设置</div>
-                    <label>动作间隔时间 (秒):</label>
-                    <input type="number" id="interval-input" value="3" min="1" max="60" step="0.5" style="width: 100%; margin: 5px 0;">
+                    <label>播放间隔时间 (秒):</label>
+                    <input type="number" id="interval-input" value="4" min="2" max="60" step="0.5" style="width: 100%; margin: 5px 0;">
+                    <small style="color: #666; font-size: 11px;">每个状态/表情的播放持续时间</small>
                     <label>
                         <input type="checkbox" id="loop-checkbox"> 循环播放
                     </label>
@@ -248,8 +249,18 @@
             <div class="right-panel">
                 <div class="section-title">动作序列编辑器</div>
                 
-                <div class="motion-grid" id="motion-grid">
-                    <!-- 动作按钮将在这里生成 -->
+                <div style="margin-bottom: 15px;">
+                    <h4 style="color: #667eea; margin-bottom: 8px;">💃 状态控制</h4>
+                    <div class="motion-grid" id="motion-grid">
+                        <!-- 状态按钮将在这里生成 -->
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <h4 style="color: #764ba2; margin-bottom: 8px;">😊 表情控制</h4>
+                    <div class="motion-grid" id="expression-grid">
+                        <!-- 表情按钮将在这里生成 -->
+                    </div>
                 </div>
 
                 <div class="sequence-editor">
@@ -300,28 +311,50 @@
             </div>
 
             <div class="doc-section">
-                <h3>5. 可用动作列表</h3>
+                <h3>5. 可用状态和表情列表</h3>
+                <h4>💃 状态控制 (motion类型)</h4>
                 <ul>
-                    <li><code>待机</code> - 默认待机动作</li>
-                    <li><code>惊讶</code> - 表现惊讶情绪</li>
-                    <li><code>开心</code> - 表现开心情绪</li>
-                    <li><code>生气</code> - 表现生气情绪</li>
-                    <li><code>眨眼</code> - 眨眼动作</li>
-                    <li><code>摇头</code> - 摇头动作</li>
+                    <li><code>待机</code> - 默认待机状态</li>
+                    <li><code>惊讶</code> - 表现惊讶状态</li>
+                    <li><code>开心</code> - 表现开心状态</li>
+                    <li><code>生气</code> - 表现生气状态</li>
+                    <li><code>眨眼</code> - 眨眼状态</li>
+                    <li><code>摇头</code> - 摇头状态</li>
+                </ul>
+                <h4>😊 表情控制 (expression类型)</h4>
+                <ul>
+                    <li><code>爱心眼</code> - 爱心形状的眼睛表情</li>
+                    <li><code>生气</code> - 生气表情</li>
+                    <li><code>星星眼</code> - 星星形状的眼睛表情</li>
+                    <li><code>哭哭</code> - 哭泣表情</li>
+                    <li><code>麦克风</code> - 手持麦克风表情</li>
+                    <li><code>外套</code> - 外套装扮表情</li>
+                    <li><code>舌头</code> - 吐舌头表情</li>
                 </ul>
             </div>
         </div>
     </div>
 
     <script>
-        // 动作配置
+        // 状态配置（对应模型的Motions）
         const MOTIONS = [
-            { name: '待机', group: '', index: 0 },
-            { name: '惊讶', group: '', index: 1 },
-            { name: '开心', group: '', index: 2 },
-            { name: '生气', group: '', index: 3 },
-            { name: '眨眼', group: '', index: 4 },
-            { name: '摇头', group: '', index: 5 }
+            { name: '待机', group: '', index: 0 },      // Idle.motion3.json
+            { name: '惊讶', group: '', index: 1 },      // jingya.motion3.json
+            { name: '开心', group: '', index: 2 },      // kaixin.motion3.json
+            { name: '生气', group: '', index: 3 },      // shengqi.motion3.json
+            { name: '眨眼', group: '', index: 4 },      // wink.motion3.json
+            { name: '摇头', group: '', index: 5 }       // yaotou.motion3.json
+        ];
+
+        // 表情配置（对应模型的Expressions）
+        const EXPRESSIONS = [
+            { name: '爱心眼', file: 'A1爱心眼' },       // A1爱心眼.exp3.json
+            { name: '生气', file: 'A2生气' },           // A2生气.exp3.json
+            { name: '星星眼', file: 'A3星星眼' },       // A3星星眼.exp3.json
+            { name: '哭哭', file: 'A4哭哭' },           // A4哭哭.exp3.json
+            { name: '麦克风', file: 'B1麦克风' },       // B1麦克风.exp3.json
+            { name: '外套', file: 'B2外套' },           // B2外套.exp3.json
+            { name: '舌头', file: '舌头' }              // 舌头.exp3.json
         ];
 
         // 全局变量
@@ -353,15 +386,27 @@
             }, 1000);
         });
 
-        // 初始化动作按钮网格
+        // 初始化动作和表情按钮网格
         function initializeMotionGrid() {
-            const grid = document.getElementById('motion-grid');
+            // 初始化动作按钮
+            const motionGrid = document.getElementById('motion-grid');
             MOTIONS.forEach(motion => {
                 const btn = document.createElement('button');
                 btn.className = 'motion-btn';
                 btn.textContent = motion.name;
-                btn.onclick = () => addMotionToSequence(motion);
-                grid.appendChild(btn);
+                btn.onclick = () => addToSequence('motion', motion);
+                motionGrid.appendChild(btn);
+            });
+
+            // 初始化表情按钮
+            const expressionGrid = document.getElementById('expression-grid');
+            EXPRESSIONS.forEach(expression => {
+                const btn = document.createElement('button');
+                btn.className = 'motion-btn';
+                btn.style.background = 'linear-gradient(45deg, #e91e63, #ff6ec7)';
+                btn.textContent = expression.name;
+                btn.onclick = () => addToSequence('expression', expression);
+                expressionGrid.appendChild(btn);
             });
         }
 
@@ -437,14 +482,27 @@
             }
         }
 
-        // 添加动作到序列
-        function addMotionToSequence(motion) {
-            motionSequence.push({
-                name: motion.name,
-                group: motion.group,
-                index: motion.index,
-                duration: parseFloat(document.getElementById('interval-input').value) || 3
-            });
+        // 添加动作或表情到序列
+        function addToSequence(type, item) {
+            const duration = parseFloat(document.getElementById('interval-input').value) || 3;
+            
+            if (type === 'motion') {
+                motionSequence.push({
+                    type: 'motion',
+                    name: item.name,
+                    group: item.group,
+                    index: item.index,
+                    duration: duration
+                });
+            } else if (type === 'expression') {
+                motionSequence.push({
+                    type: 'expression',
+                    name: item.name,
+                    file: item.file,
+                    duration: duration
+                });
+            }
+            
             updateSequenceDisplay();
             updateJSONEditor();
         }
@@ -457,12 +515,17 @@
                 return;
             }
 
-            container.innerHTML = motionSequence.map((motion, index) => `
-                <div class="sequence-item ${index === currentIndex && isPlaying ? 'current' : ''}">
-                    <span>${index + 1}. ${motion.name} (${motion.duration}秒)</span>
-                    <button class="remove-btn" onclick="removeMotion(${index})">删除</button>
-                </div>
-            `).join('');
+            container.innerHTML = motionSequence.map((item, index) => {
+                const typeIcon = item.type === 'motion' ? '💃' : '😊';
+                const typeColor = item.type === 'motion' ? '#667eea' : '#e91e63';
+                const typeName = item.type === 'motion' ? '状态' : '表情';
+                return `
+                    <div class="sequence-item ${index === currentIndex && isPlaying ? 'current' : ''}">
+                        <span style="color: ${typeColor}">${typeIcon} ${index + 1}. ${item.name} [${typeName}] (${item.duration}秒)</span>
+                        <button class="remove-btn" onclick="removeMotion(${index})">删除</button>
+                    </div>
+                `;
+            }).join('');
         }
 
         // 删除动作
@@ -495,6 +558,13 @@
                 return;
             }
 
+            // 禁用Live2D页面的自动回归功能
+            if (live2dApp.idleReturnTimer) {
+                clearTimeout(live2dApp.idleReturnTimer);
+                live2dApp.idleReturnTimer = null;
+                console.log('已禁用Live2D页面的自动回归功能');
+            }
+
             if (isPaused) {
                 // 继续播放
                 isPaused = false;
@@ -510,44 +580,126 @@
             updateStatus('播放中...');
         }
 
-        // 播放下一个动作
-        function playNextMotion() {
-            if (!isPlaying || isPaused || currentIndex >= motionSequence.length) {
+        // 播放下一个状态或表情
+        async function playNextMotion() {
+            if (!isPlaying || isPaused) {
+                console.log('播放已停止或暂停');
                 return;
             }
 
-            const motion = motionSequence[currentIndex];
-            updateCurrentMotion(motion.name);
-            updateProgress();
-
-            // 播放动作
-            try {
-                live2dApp.playMotion(motion.group, motion.index);
-                console.log(`播放动作: ${motion.name}`);
-            } catch (error) {
-                console.error('播放动作失败:', error);
+            if (currentIndex >= motionSequence.length) {
+                console.log('序列播放完毕');
+                // 序列播放完毕
+                const shouldLoop = document.getElementById('loop-checkbox').checked;
+                if (shouldLoop) {
+                    currentIndex = 0;
+                    console.log('循环播放，重新开始');
+                    playNextMotion();
+                } else {
+                    await stopSequence();
+                    // 播放完成后回归待机状态和默认表情
+                    setTimeout(() => {
+                        try {
+                            // 不再重置表情，只播放待机状态
+                            console.log('序列播放完成，不重置表情状态');
+                            
+                            // 延迟一点播放待机状态
+                            setTimeout(() => {
+                                live2dApp.playMotion('', 0, false); // 播放待机状态，恢复自动回归
+                                console.log('序列播放完成，回归待机状态');
+                                updateStatus('播放完成 - 已回归待机');
+                            }, 200);
+                        } catch (error) {
+                            console.error('回归待机状态失败:', error);
+                        }
+                    }, 800);
+                }
+                return;
             }
 
-            // 设置定时器播放下一个动作
+            const item = motionSequence[currentIndex];
+            console.log(`准备播放第${currentIndex + 1}项: ${item.name} (${item.type})`);
+            
+            updateCurrentMotion(item.name);
+            updateProgress();
+            updateSequenceDisplay();
+
+            // 播放状态或表情
+            try {
+                if (item.type === 'motion') {
+                    // 调用时跳过自动回归，由播放器控制
+                    live2dApp.playMotion(item.group, item.index, true);
+                    console.log(`✓ 播放状态: ${item.name}`);
+                } else if (item.type === 'expression') {
+                    live2dApp.playExpression(item.file);
+                    console.log(`✓ 播放表情: ${item.name}`);
+                    
+                    // 手动清除表情播放可能触发的定时器
+                    if (live2dApp.idleReturnTimer) {
+                        clearTimeout(live2dApp.idleReturnTimer);
+                        live2dApp.idleReturnTimer = null;
+                    }
+                }
+            } catch (error) {
+                console.error(`播放${item.type === 'motion' ? '状态' : '表情'}失败:`, error);
+            }
+
+            // 清除之前的定时器
+            if (playTimer) {
+                clearTimeout(playTimer);
+                playTimer = null;
+            }
+
+            // 设置定时器播放下一个项目
             playTimer = setTimeout(() => {
+                console.log(`${item.name} 播放完成，准备下一个`);
                 currentIndex++;
                 
-                if (currentIndex >= motionSequence.length) {
-                    // 序列播放完毕
-                    const shouldLoop = document.getElementById('loop-checkbox').checked;
-                    if (shouldLoop) {
-                        currentIndex = 0;
-                        playNextMotion();
-                    } else {
-                        stopSequence();
-                        updateStatus('播放完成');
+                // 检查刚播放完的项目是否为非待机内容
+                const currentItem = motionSequence[currentIndex - 1];
+                const isCurrentNonIdle = currentItem && (currentItem.type === 'expression' || 
+                    (currentItem.type === 'motion' && !(currentItem.group === '' && currentItem.index === 0)));
+                
+                // 检查是否还有后续的非待机内容需要播放
+                const hasMoreNonIdleStates = hasNonIdleStatesAfter(currentIndex);
+                
+                if (isCurrentNonIdle && !hasMoreNonIdleStates) {
+                    // 刚播放的是非待机内容，且后面没有更多非待机内容，需要插入待机
+                    console.log(`${currentItem.name}播放完成，后续无非待机内容，插入待机`);
+                    try {
+                        live2dApp.playMotion('', 0, true); // 播放待机状态
+                        console.log('插入待机状态');
+                    } catch (error) {
+                        console.error('插入待机状态失败:', error);
                     }
+                    
+                    // 短暂延迟后继续序列
+                    setTimeout(() => {
+                        playNextMotion();
+                    }, 500);
                 } else {
+                    // 直接播放下一个
+                    console.log('继续播放下一项');
                     playNextMotion();
                 }
-            }, motion.duration * 1000);
+            }, item.duration * 1000);
+        }
 
-            updateSequenceDisplay();
+        // 检查指定索引之后是否还有非待机内容
+        function hasNonIdleStatesAfter(fromIndex) {
+            for (let i = fromIndex; i < motionSequence.length; i++) {
+                const item = motionSequence[i];
+                // 统一判断：只要不是待机状态，就算非待机内容
+                const isIdleMotion = (item.type === 'motion' && item.group === '' && item.index === 0);
+                
+                if (!isIdleMotion) {
+                    // 是非待机状态或任何表情
+                    console.log(`后续还有非待机内容: ${item.name} (${item.type})`);
+                    return true;
+                }
+            }
+            console.log('后续没有非待机内容');
+            return false;
         }
 
         // 暂停播放
@@ -562,7 +714,7 @@
         }
 
         // 停止播放
-        function stopSequence() {
+        async function stopSequence() {
             isPlaying = false;
             isPaused = false;
             currentIndex = 0;
@@ -570,6 +722,21 @@
                 clearTimeout(playTimer);
                 playTimer = null;
             }
+            
+            // 停止时回归待机并恢复自动回归功能
+            try {
+                if (live2dApp && live2dApp.playMotion) {
+                    // 不再重置表情，保持当前表情状态
+                    console.log('智能回归：保持当前表情状态，不进行重置');
+                    setTimeout(() => {
+                        live2dApp.playMotion('', 0, false); // 恢复自动回归
+                        console.log('停止播放，回归待机状态并恢复自动回归功能');
+                    }, 100);
+                }
+            } catch (error) {
+                console.error('停止时回归待机失败:', error);
+            }
+            
             updatePlaybackControls();
             updateSequenceDisplay();
             updateProgress();
@@ -639,16 +806,33 @@
                 }
 
                 motionSequence = config.sequence.map(item => {
-                    const motion = MOTIONS.find(m => m.name === item.motion);
-                    if (!motion) {
-                        throw new Error(`未知动作: ${item.motion}`);
+                    if (item.type === 'motion' || !item.type) { // 兼容旧格式
+                        const motionName = item.name || item.motion; // 兼容旧格式
+                        const motion = MOTIONS.find(m => m.name === motionName);
+                        if (!motion) {
+                            throw new Error(`未知动作: ${motionName}`);
+                        }
+                        return {
+                            type: 'motion',
+                            name: motion.name,
+                            group: motion.group,
+                            index: motion.index,
+                            duration: item.duration || 3
+                        };
+                    } else if (item.type === 'expression') {
+                        const expression = EXPRESSIONS.find(e => e.name === item.name);
+                        if (!expression) {
+                            throw new Error(`未知表情: ${item.name}`);
+                        }
+                        return {
+                            type: 'expression',
+                            name: expression.name,
+                            file: expression.file,
+                            duration: item.duration || 3
+                        };
+                    } else {
+                        throw new Error(`未知类型: ${item.type}`);
                     }
-                    return {
-                        name: motion.name,
-                        group: motion.group,
-                        index: motion.index,
-                        duration: item.duration || 3
-                    };
                 });
 
                 updateSequenceDisplay();
@@ -661,9 +845,10 @@
         // 导出为JSON
         function exportToJSON() {
             const config = {
-                sequence: motionSequence.map(motion => ({
-                    motion: motion.name,
-                    duration: motion.duration
+                sequence: motionSequence.map(item => ({
+                    type: item.type,
+                    name: item.name,
+                    duration: item.duration
                 })),
                 settings: {
                     loop: document.getElementById('loop-checkbox').checked,
@@ -724,15 +909,18 @@
         function updateJsonExample() {
             const example = {
                 sequence: [
-                    { motion: "开心", duration: 3 },
-                    { motion: "眨眼", duration: 2 },
-                    { motion: "摇头", duration: 4 },
-                    { motion: "待机", duration: 3 }
+                    { type: "motion", name: "开心", duration: 3 },
+                    { type: "expression", name: "爱心眼", duration: 2 },
+                    { type: "motion", name: "眨眼", duration: 2 },
+                    { type: "expression", name: "星星眼", duration: 3 },
+                    { type: "motion", name: "摇头", duration: 4 },
+                    { type: "motion", name: "待机", duration: 3 }
                 ],
                 settings: {
                     loop: false,
                     defaultInterval: 3
-                }
+                },
+                note: "motion类型为状态控制，expression类型为表情控制"
             };
             document.getElementById('json-example').textContent = JSON.stringify(example, null, 2);
         }
