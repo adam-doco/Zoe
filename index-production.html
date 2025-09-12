@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小智Live2D - 生产环境</title>
+    <style>
+        /* 基础样式 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        /* Live2D canvas */
+        #live2d-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        /* 控制面板 */
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            max-width: 300px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-group h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* 按钮样式 */
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn.small {
+            padding: 8px 12px;
+            font-size: 11px;
+        }
+
+        /* 语音按钮特殊样式 */
+        #voice-btn {
+            background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
+            font-size: 14px;
+            padding: 15px 25px;
+            width: 100%;
+            margin: 10px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #voice-btn:hover {
+            background: linear-gradient(45deg, #ff5252, #ff7979);
+        }
+
+        #voice-btn.recording {
+            background: linear-gradient(45deg, #ff1744, #f50057);
+            animation: pulse 1.5s infinite;
+        }
+
+        #voice-btn.connecting {
+            background: linear-gradient(45deg, #ffa726, #ffb74d);
+            animation: connecting 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        @keyframes connecting {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        /* 状态显示 */
+        .status {
+            background: rgba(0, 0, 0, 0.05);
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .status.connected {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+        }
+
+        .status.error {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+        }
+
+        /* 中断按钮 */
+        #interrupt-btn {
+            background: linear-gradient(45deg, #f44336, #ef5350);
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        #interrupt-btn:hover {
+            background: linear-gradient(45deg, #d32f2f, #f44336);
+        }
+
+        #interrupt-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* 错误信息 */
+        .error-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #f44336;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            transform: translateY(-100%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+        }
+
+        .error-bar.show {
+            transform: translateY(0);
+        }
+
+        /* 滚动条美化 */
+        .controls::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .controls::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 3px;
+        }
+
+        .controls::-webkit-scrollbar-thumb {
+            background: rgba(102, 126, 234, 0.5);
+            border-radius: 3px;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .controls {
+                top: 10px;
+                right: 10px;
+                left: 10px;
+                max-width: none;
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="live2d-canvas"></canvas>
+    
+    <!-- 错误提示条 -->
+    <div id="error-bar" class="error-bar"></div>
+    
+    <!-- 控制面板 -->
+    <div class="controls">
+        <!-- 语音控制 -->
+        <div class="control-group">
+            <h3>🎤 语音对话</h3>
+            <div id="voice-status" class="status">点击连接小智</div>
+            <button id="voice-btn" class="btn">连接小智AI</button>
+            <button id="interrupt-btn" class="btn" disabled>中断对话</button>
+        </div>
+
+        <!-- 动作控制 -->
+        <div class="control-group">
+            <h3>💃 动作表情</h3>
+            <div id="motions-container">
+                <!-- 动作按钮将在这里动态生成 -->
+            </div>
+        </div>
+
+        <!-- 表情控制 -->
+        <div class="control-group">
+            <h3>😊 表情控制</h3>
+            <div id="expressions-container">
+                <!-- 表情按钮将在这里动态生成 -->
+            </div>
+        </div>
+
+        <!-- 动作播放器 -->
+        <div class="control-group">
+            <h3>🎭 动作播放器</h3>
+            <button class="btn" onclick="openMotionPlayer()">打开动作播放器</button>
+        </div>
+
+        <!-- 系统信息 -->
+        <div class="control-group">
+            <h3>📊 系统状态</h3>
+            <div style="font-size: 11px; color: #666; line-height: 1.4;">
+                <div>环境: 生产环境</div>
+                <div>版本: v2.0.0</div>
+                <div id="device-info">设备: 正在获取...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 核心脚本 -->
+    <script>
+        // ========== 全局配置 ==========
+        const XIAOZHI_CONFIG = {
+            // 生产环境配置
+            websocketUrl: 'wss://api.tenclass.net/xiaozhi/v1/',
+            otaUrl: 'https://api.tenclass.net/xiaozhi/ota/',
+            
+            // 设备信息 (已激活的设备)
+            deviceId: 'b3:66:fa:cc:95:b9',
+            clientId: 'c5d17de5-277a-47d9-8a7b-137300ea0fbc',
+            serialNumber: 'SN-07BB9BEF-b366facc95b9',
+            hmacKey: '431c400f98c949da553dff65800effa5183d2f5def9db9698bbcd40b9d751df2',
+            
+            // 音频配置
+            audio: {
+                sampleRate: 16000,
+                channels: 1,
+                frameSize: 960
+            }
+        };
+
+        // ========== Live2D管理器 ==========
+        class Live2DManager {
+            constructor() {
+                this.app = null;
+                this.model = null;
+                this.canvas = document.getElementById('live2d-canvas');
+                this.isLoaded = false;
+            }
+
+            async init() {
+                try {
+                    await this.loadScripts();
+                    await this.initPixiApp();
+                    await this.loadModel();
+                    this.setupControls();
+                    console.log('✓ Live2D初始化完成');
+                    this.isLoaded = true;
+                } catch (error) {
+                    console.error('Live2D初始化失败:', error);
+                    showError('Live2D加载失败: ' + error.message);
+                }
+            }
+
+            async loadScripts() {
+                const scripts = [
+                    'https://unpkg.com/pixi.js@7.3.2/dist/pixi.min.js',
+                    'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js'
+                ];
+
+                for (const src of scripts) {
+                    await this.loadScript(src);
+                }
+
+                // 设置PIXI全局变量
+                window.PIXI = PIXI;
+                
+                // 加载Live2D显示库
+                await this.loadScript('https://unpkg.com/pixi-live2d-display@0.4.0/dist/cubism4.min.js');
+            }
+
+            loadScript(src) {
+                return new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.onload = resolve;
+                    script.onerror = () => reject(new Error(`脚本加载失败: ${src}`));
+                    document.head.appendChild(script);
+                });
+            }
+
+            async initPixiApp() {
+                this.app = new PIXI.Application({
+                    view: this.canvas,
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    backgroundColor: 0x000000,
+                    backgroundAlpha: 0,
+                    antialias: true,
+                    resolution: window.devicePixelRatio || 1,
+                    autoDensity: true
+                });
+
+                // 响应式处理
+                window.addEventListener('resize', () => {
+                    this.app.renderer.resize(window.innerWidth, window.innerHeight);
+                    if (this.model) {
+                        this.positionModel();
+                    }
+                });
+            }
+
+            async loadModel() {
+                try {
+                    console.log('正在加载Live2D模型...');
+                    
+                    // 验证模型文件
+                    const response = await fetch('Mould/Z.model3.json', { method: 'HEAD' });
+                    if (!response.ok) {
+                        throw new Error('模型文件不存在或无法访问');
+                    }
+
+                    this.model = await PIXI.live2d.Live2DModel.from('Mould/Z.model3.json');
+                    this.app.stage.addChild(this.model);
+                    this.positionModel();
+
+                    console.log('✓ Live2D模型加载成功');
+                } catch (error) {
+                    console.error('模型加载失败:', error);
+                    throw error;
+                }
+            }
+
+            positionModel() {
+                if (!this.model) return;
+
+                const scale = Math.min(
+                    window.innerWidth / this.model.width,
+                    window.innerHeight / this.model.height
+                ) * 0.7;
+
+                this.model.scale.set(scale);
+                this.model.anchor.set(0.5, 0.5);
+                this.model.x = window.innerWidth * 0.5;
+                this.model.y = window.innerHeight * 0.5;
+            }
+
+            setupControls() {
+                if (!this.model) return;
+
+                const motionsContainer = document.getElementById('motions-container');
+                const expressionsContainer = document.getElementById('expressions-container');
+
+                // 从模型文件中获取动作列表（按索引顺序对应motion文件）
+                const motions = [
+                    { name: '待机', group: '', index: 0 },
+                    { name: '惊讶', group: '', index: 1 },
+                    { name: '开心', group: '', index: 2 },
+                    { name: '生气', group: '', index: 3 },
+                    { name: '眨眼', group: '', index: 4 },
+                    { name: '摇头', group: '', index: 5 }
+                ];
+
+                // 生成动作按钮
+                motions.forEach(motion => {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn small';
+                    btn.textContent = motion.name;
+                    btn.onclick = () => this.playMotion(motion.group, motion.index);
+                    motionsContainer.appendChild(btn);
+                });
+
+                // 从模型文件中获取表情列表
+                const expressions = [
+                    { name: '爱心眼', file: 'A1爱心眼' },
+                    { name: '生气', file: 'A2生气' },
+                    { name: '星星眼', file: 'A3星星眼' },
+                    { name: '哭哭', file: 'A4哭哭' },
+                    { name: '麦克风', file: 'B1麦克风' },
+                    { name: '外套', file: 'B2外套' },
+                    { name: '舌头', file: '舌头' }
+                ];
+
+                // 生成表情按钮
+                expressions.forEach(expression => {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn small';
+                    btn.textContent = expression.name;
+                    btn.onclick = () => this.playExpression(expression.file);
+                    expressionsContainer.appendChild(btn);
+                });
+            }
+
+            playMotion(group, index = 0) {
+                if (this.model && this.model.internalModel) {
+                    try {
+                        // 使用pixi-live2d-display的motion方法，传入组名和索引
+                        this.model.motion(group, index);
+                        console.log(`播放动作: 组=${group}, 索引=${index}`);
+                        
+                        // 更新状态显示
+                        const statusEl = document.getElementById('status');
+                        if (statusEl) {
+                            statusEl.textContent = `播放动作: 索引 ${index}`;
+                        }
+                    } catch (error) {
+                        console.error('播放动作失败:', error);
+                        // 尝试其他方式
+                        try {
+                            console.log('尝试备用方法...');
+                            this.model.internalModel.motionManager.startMotion(group, index);
+                        } catch (fallbackError) {
+                            console.error('备用方法也失败:', fallbackError);
+                        }
+                    }
+                }
+            }
+
+            playExpression(expressionName) {
+                if (this.model && this.model.internalModel) {
+                    try {
+                        // 使用pixi-live2d-display的expression方法
+                        this.model.expression(expressionName);
+                        console.log(`播放表情: ${expressionName}`);
+                        
+                        // 更新状态显示
+                        const statusEl = document.getElementById('status');
+                        if (statusEl) {
+                            statusEl.textContent = `播放表情: ${expressionName}`;
+                        }
+                    } catch (error) {
+                        console.error('播放表情失败:', error);
+                    }
+                }
+            }
+
+            // 全局方法
+            playTalk() {
+                this.playMotion('talk', Math.floor(Math.random() * 3));
+            }
+
+            playIdle() {
+                this.playMotion('idle', Math.floor(Math.random() * 3));
+            }
+        }
+
+        // ========== 小智AI客户端 ==========
+        class XiaozhiAIClient {
+            constructor() {
+                this.ws = null;
+                this.isConnected = false;
+                this.isRecording = false;
+                this.sessionId = null;
+                
+                // 音频相关
+                this.audioContext = null;
+                this.processor = null;
+                this.mediaStream = null;
+                
+                // UI元素
+                this.voiceBtn = document.getElementById('voice-btn');
+                this.statusDiv = document.getElementById('voice-status');
+                this.interruptBtn = document.getElementById('interrupt-btn');
+                
+                this.bindEvents();
+                this.updateDeviceInfo();
+            }
+
+            bindEvents() {
+                this.voiceBtn.addEventListener('click', () => {
+                    if (!this.isConnected) {
+                        this.connectToXiaozhi();
+                    }
+                });
+
+                // 长按录音
+                this.voiceBtn.addEventListener('mousedown', (e) => {
+                    if (this.isConnected && !this.isRecording) {
+                        e.preventDefault();
+                        this.startRecording();
+                    }
+                });
+
+                this.voiceBtn.addEventListener('mouseup', (e) => {
+                    if (this.isRecording) {
+                        e.preventDefault();
+                        this.stopRecording();
+                    }
+                });
+
+                // 触摸支持
+                this.voiceBtn.addEventListener('touchstart', (e) => {
+                    if (this.isConnected && !this.isRecording) {
+                        e.preventDefault();
+                        this.startRecording();
+                    }
+                });
+
+                this.voiceBtn.addEventListener('touchend', (e) => {
+                    if (this.isRecording) {
+                        e.preventDefault();
+                        this.stopRecording();
+                    }
+                });
+
+                this.interruptBtn.addEventListener('click', () => {
+                    this.interrupt();
+                });
+            }
+
+            updateDeviceInfo() {
+                const deviceInfo = document.getElementById('device-info');
+                deviceInfo.textContent = `设备: ${XIAOZHI_CONFIG.deviceId}`;
+            }
+
+            async connectToXiaozhi() {
+                if (this.isConnected) return;
+
+                try {
+                    this.updateStatus('正在获取访问令牌...');
+                    this.voiceBtn.className = 'btn connecting';
+                    
+                    // 获取访问令牌
+                    const token = await this.getAccessToken();
+                    this.accessToken = token;
+                    
+                    this.updateStatus('正在连接小智AI...');
+                    
+                    // 生成会话ID
+                    this.sessionId = this.generateSessionId();
+                    
+                    // 连接WebSocket
+                    await this.connectWebSocket(token);
+                    
+                } catch (error) {
+                    console.error('连接失败:', error);
+                    this.updateStatus(`连接失败: ${error.message}`);
+                    this.voiceBtn.className = 'btn';
+                    showError('连接小智AI失败: ' + error.message);
+                }
+            }
+
+            async getAccessToken() {
+                try {
+                    const response = await fetch(XIAOZHI_CONFIG.otaUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Device-Id': XIAOZHI_CONFIG.deviceId,
+                            'Client-Id': XIAOZHI_CONFIG.clientId,
+                            'Content-Type': 'application/json',
+                            'User-Agent': 'Live2D-Client/1.0.0',
+                            'Accept-Language': 'zh-CN',
+                            'Activation-Version': '1.0.0'
+                        },
+                        body: JSON.stringify({
+                            application: {
+                                version: '1.0.0',
+                                elf_sha256: XIAOZHI_CONFIG.hmacKey
+                            },
+                            board: {
+                                type: 'live2d-client',
+                                name: 'live2d-client',
+                                ip: '127.0.0.1',
+                                mac: XIAOZHI_CONFIG.deviceId
+                            }
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`OTA请求失败: HTTP ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    console.log('OTA响应:', data);
+
+                    if (!data.websocket || !data.websocket.token) {
+                        throw new Error('OTA响应中缺少WebSocket令牌');
+                    }
+
+                    return data.websocket.token;
+                } catch (error) {
+                    console.error('获取访问令牌失败:', error);
+                    throw new Error('无法获取访问令牌: ' + error.message);
+                }
+            }
+
+            generateSessionId() {
+                return 'live2d_' + Date.now() + '_' + Math.random().toString(36).substring(2);
+            }
+
+            async connectWebSocket(token) {
+                return new Promise((resolve, reject) => {
+                    // 尝试不同的URL格式
+                    const wsUrl = `${XIAOZHI_CONFIG.websocketUrl}`;
+                    console.log('连接WebSocket:', wsUrl);
+                    console.log('使用token:', token);
+                    console.log('设备ID:', XIAOZHI_CONFIG.deviceId);
+                    console.log('客户端ID:', XIAOZHI_CONFIG.clientId);
+
+                    this.ws = new WebSocket(wsUrl);
+
+                    const timeout = setTimeout(() => {
+                        if (this.ws.readyState !== WebSocket.OPEN) {
+                            this.ws.close();
+                            reject(new Error('WebSocket连接超时'));
+                        }
+                    }, 10000);
+
+                    this.ws.onopen = () => {
+                        clearTimeout(timeout);
+                        console.log('✓ WebSocket连接成功');
+                        this.sendHelloMessage();
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        this.handleMessage(event);
+                    };
+
+                    this.ws.onclose = (event) => {
+                        console.log('WebSocket连接关闭:', event.code, event.reason);
+                        this.isConnected = false;
+                        this.updateStatus('连接已断开');
+                        this.voiceBtn.className = 'btn';
+                        this.voiceBtn.textContent = '重新连接';
+                        this.interruptBtn.disabled = true;
+                    };
+
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket错误:', error);
+                        clearTimeout(timeout);
+                        reject(new Error('WebSocket连接错误'));
+                    };
+
+                    // 等待hello响应
+                    const originalOnMessage = this.ws.onmessage;
+                    this.ws.onmessage = (event) => {
+                        try {
+                            const message = JSON.parse(event.data);
+                            if (message.type === 'hello_response') {
+                                console.log('✓ 收到hello响应:', message);
+                                this.isConnected = true;
+                                this.updateStatus('已连接 - 长按说话');
+                                this.voiceBtn.className = 'btn';
+                                this.voiceBtn.textContent = '长按说话';
+                                this.interruptBtn.disabled = false;
+                                this.ws.onmessage = originalOnMessage;
+                                resolve();
+                            }
+                        } catch (e) {
+                            // 忽略非JSON消息
+                        }
+                    };
+                });
+            }
+
+            sendHelloMessage() {
+                // 先发送认证信息
+                const authMessage = {
+                    authorization: `Bearer ${this.accessToken}`,
+                    protocol_version: '1',
+                    device_id: XIAOZHI_CONFIG.deviceId,
+                    client_id: XIAOZHI_CONFIG.clientId
+                };
+                
+                console.log('发送认证消息:', authMessage);
+                this.ws.send(JSON.stringify(authMessage));
+                
+                // 然后发送hello消息
+                const helloMessage = {
+                    type: 'hello',
+                    version: 1,
+                    features: { mcp: true },
+                    transport: 'websocket',
+                    audio_params: {
+                        format: 'opus',
+                        sample_rate: XIAOZHI_CONFIG.audio.sampleRate,
+                        channels: XIAOZHI_CONFIG.audio.channels,
+                        frame_duration: 60
+                    }
+                };
+                
+                console.log('发送hello消息:', helloMessage);
+                setTimeout(() => {
+                    this.ws.send(JSON.stringify(helloMessage));
+                }, 100);
+            }
+
+            handleMessage(event) {
+                try {
+                    // 尝试解析JSON消息
+                    let message;
+                    try {
+                        message = JSON.parse(event.data);
+                    } catch {
+                        // 如果不是JSON，可能是二进制数据
+                        console.log('收到二进制数据:', event.data.length, 'bytes');
+                        return;
+                    }
+
+                    console.log('收到消息:', message);
+
+                    switch (message.type) {
+                        case 'stt':
+                            this.handleSTTResult(message);
+                            break;
+                        case 'llm':
+                            this.handleLLMResponse(message);
+                            break;
+                        case 'tts':
+                            this.handleTTSMessage(message);
+                            break;
+                        case 'error':
+                            console.error('服务器错误:', message);
+                            showError('服务器错误: ' + (message.message || '未知错误'));
+                            break;
+                        default:
+                            console.log('未知消息类型:', message.type);
+                    }
+                } catch (error) {
+                    console.error('处理消息失败:', error);
+                }
+            }
+
+            handleSTTResult(message) {
+                console.log('STT结果:', message.text);
+                this.updateStatus(`听到: ${message.text}`);
+                
+                if (live2dManager.isLoaded) {
+                    live2dManager.playIdle();
+                }
+            }
+
+            handleLLMResponse(message) {
+                console.log('LLM响应:', message.text);
+                this.updateStatus(`小智: ${message.text.substring(0, 30)}...`);
+                
+                if (live2dManager.isLoaded) {
+                    live2dManager.playTalk();
+                }
+            }
+
+            handleTTSMessage(message) {
+                console.log('TTS消息:', message);
+                
+                if (message.state === 'start') {
+                    this.updateStatus('小智正在说话...');
+                    if (live2dManager.isLoaded) {
+                        live2dManager.playTalk();
+                    }
+                } else if (message.state === 'stop') {
+                    this.updateStatus('已连接 - 长按说话');
+                    if (live2dManager.isLoaded) {
+                        live2dManager.playIdle();
+                    }
+                }
+            }
+
+            async startRecording() {
+                if (!this.isConnected || this.isRecording) return;
+
+                try {
+                    this.isRecording = true;
+                    this.voiceBtn.className = 'btn recording';
+                    this.updateStatus('正在录音...');
+
+                    // 获取麦克风权限
+                    this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            sampleRate: XIAOZHI_CONFIG.audio.sampleRate,
+                            channelCount: XIAOZHI_CONFIG.audio.channels,
+                            echoCancellation: true,
+                            noiseSuppression: true
+                        }
+                    });
+
+                    // 创建音频上下文
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                        sampleRate: XIAOZHI_CONFIG.audio.sampleRate
+                    });
+
+                    const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+                    
+                    // 创建音频处理节点
+                    this.processor = this.audioContext.createScriptProcessor(XIAOZHI_CONFIG.audio.frameSize, 1, 1);
+                    
+                    this.processor.onaudioprocess = (event) => {
+                        const inputData = event.inputBuffer.getChannelData(0);
+                        const pcmData = new Int16Array(inputData.length);
+                        
+                        // 转换为16位PCM
+                        for (let i = 0; i < inputData.length; i++) {
+                            pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+                        }
+                        
+                        // 发送音频数据
+                        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                            this.ws.send(pcmData.buffer);
+                        }
+                    };
+
+                    source.connect(this.processor);
+                    this.processor.connect(this.audioContext.destination);
+
+                    console.log('✓ 开始录音');
+
+                } catch (error) {
+                    console.error('录音启动失败:', error);
+                    this.stopRecording();
+                    showError('无法访问麦克风: ' + error.message);
+                }
+            }
+
+            stopRecording() {
+                if (!this.isRecording) return;
+
+                this.isRecording = false;
+                this.voiceBtn.className = 'btn';
+                this.updateStatus('处理中...');
+
+                // 清理音频资源
+                if (this.processor) {
+                    this.processor.disconnect();
+                    this.processor = null;
+                }
+
+                if (this.audioContext) {
+                    this.audioContext.close();
+                    this.audioContext = null;
+                }
+
+                if (this.mediaStream) {
+                    this.mediaStream.getTracks().forEach(track => track.stop());
+                    this.mediaStream = null;
+                }
+
+                // 发送录音结束信号
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'audio_end', session_id: this.sessionId }));
+                }
+
+                console.log('✓ 录音结束');
+            }
+
+            interrupt() {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'interrupt', session_id: this.sessionId }));
+                    this.updateStatus('已中断');
+                    console.log('✓ 发送中断信号');
+                }
+            }
+
+            updateStatus(message) {
+                this.statusDiv.textContent = message;
+                
+                // 更新状态样式
+                this.statusDiv.className = 'status';
+                if (message.includes('已连接') || message.includes('成功')) {
+                    this.statusDiv.className += ' connected';
+                } else if (message.includes('失败') || message.includes('错误')) {
+                    this.statusDiv.className += ' error';
+                }
+            }
+        }
+
+        // ========== 工具函数 ==========
+        function showError(message) {
+            const errorBar = document.getElementById('error-bar');
+            errorBar.textContent = message;
+            errorBar.className = 'error-bar show';
+            
+            setTimeout(() => {
+                errorBar.className = 'error-bar';
+            }, 5000);
+        }
+
+        // ========== 全局方法 ==========
+        function playTalk() {
+            if (live2dManager.isLoaded) {
+                live2dManager.playTalk();
+            }
+        }
+
+
+        function playIdle() {
+            if (live2dManager.isLoaded) {
+                live2dManager.playIdle();
+            }
+        }
+
+        // 打开动作播放器（自动连接版本）
+        function openMotionPlayer() {
+            // 打开新窗口并传递连接信息
+            const playerWindow = window.open('motion-player.html', 'MotionPlayer', 'width=1200,height=800');
+            
+            // 等待新窗口加载完成后自动建立连接
+            if (playerWindow) {
+                playerWindow.addEventListener('load', () => {
+                    // 直接传递live2dApp引用给新窗口
+                    if (live2dManager && live2dManager.isLoaded) {
+                        playerWindow.live2dApp = live2dManager;
+                        console.log('✓ 动作播放器自动连接成功');
+                    }
+                });
+                
+                // 确保连接成功的备用方法
+                setTimeout(() => {
+                    if (playerWindow && !playerWindow.closed && live2dManager) {
+                        playerWindow.live2dApp = live2dManager;
+                        if (playerWindow.updateStatus) {
+                            playerWindow.updateStatus('已自动连接到Live2D');
+                        }
+                    }
+                }, 1000);
+                
+                console.log('动作播放器窗口已打开');
+            } else {
+                alert('无法打开动作播放器窗口，请检查浏览器弹窗设置');
+            }
+        }
+
+        // ========== 应用初始化 ==========
+        let live2dManager;
+        let xiaozhiClient;
+
+        window.addEventListener('load', async () => {
+            try {
+                console.log('🚀 小智Live2D - 生产环境启动');
+                
+                // 初始化Live2D
+                live2dManager = new Live2DManager();
+                await live2dManager.init();
+                
+                // 将Live2D管理器暴露到全局，供动作播放器脚本使用
+                window.live2dApp = live2dManager;
+                
+                // 设置localStorage标记，表示Live2D已准备就绪
+                try {
+                    localStorage.setItem('live2d_status', 'ready');
+                } catch (e) {
+                    console.warn('无法设置localStorage标记');
+                }
+                
+                // 初始化小智AI客户端
+                xiaozhiClient = new XiaozhiAIClient();
+                
+                console.log('✅ 应用初始化完成');
+                
+            } catch (error) {
+                console.error('应用初始化失败:', error);
+                showError('应用启动失败: ' + error.message);
+            }
+        });
+
+        // 错误处理
+        window.addEventListener('error', (event) => {
+            console.error('全局错误:', event.error);
+            showError('发生错误: ' + event.error.message);
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('未处理的Promise拒绝:', event.reason);
+            showError('异步操作失败: ' + event.reason.message);
+        });
+    </script>
+</body>
+</html>

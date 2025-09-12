@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小智AI OAuth授权测试</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 小智AI OAuth授权测试</h1>
+        
+        <div class="info">
+            <strong>验收标准：</strong>
+            <ol>
+                <li>访问 /auth/login，跳转到 xiaozhi.me 登录</li>
+                <li>登录后回到 /auth/callback，网关保存Token</li>
+                <li>POST /session 可以成功创建会话并连接小智服务</li>
+                <li>Token过期时自动刷新，无需手动重新登录</li>
+            </ol>
+        </div>
+
+        <h2>步骤1：检查授权状态</h2>
+        <button onclick="checkAuthStatus()">检查授权状态</button>
+        <div id="auth-status"></div>
+
+        <h2>步骤2：授权登录</h2>
+        <button onclick="goToLogin()" id="login-btn">前往授权登录</button>
+        
+        <h2>步骤3：创建会话</h2>
+        <button onclick="createSession()" id="session-btn">创建会话</button>
+        <div id="session-result"></div>
+
+        <h2>步骤4：测试健康检查</h2>
+        <button onclick="checkHealth()">健康检查</button>
+        <div id="health-result"></div>
+
+        <h2>日志输出</h2>
+        <pre id="log"></pre>
+    </div>
+
+    <script>
+        const log = document.getElementById('log');
+        const authStatus = document.getElementById('auth-status');
+        const sessionResult = document.getElementById('session-result');
+        const healthResult = document.getElementById('health-result');
+
+        function addLog(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            log.textContent += `[${timestamp}] ${message}\n`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        async function checkAuthStatus() {
+            try {
+                addLog('正在检查授权状态...');
+                const response = await fetch('/auth/status');
+                const data = await response.json();
+                
+                addLog(`授权状态: ${JSON.stringify(data, null, 2)}`);
+                
+                if (data.authorized) {
+                    authStatus.innerHTML = `
+                        <div class="success">
+                            ✅ 已授权<br>
+                            Token类型: ${data.tokenInfo.tokenType}<br>
+                            过期时间: ${new Date(data.tokenInfo.expiresAt).toLocaleString()}<br>
+                            权限范围: ${data.tokenInfo.scope || 'N/A'}
+                        </div>
+                    `;
+                    document.getElementById('session-btn').disabled = false;
+                } else {
+                    authStatus.innerHTML = `
+                        <div class="warning">
+                            ⚠️ 未授权，需要先登录<br>
+                            <a href="${data.loginUrl}" target="_blank">点击这里授权登录</a>
+                        </div>
+                    `;
+                    document.getElementById('session-btn').disabled = true;
+                }
+            } catch (error) {
+                addLog(`检查授权状态失败: ${error.message}`);
+                authStatus.innerHTML = `<div class="error">❌ 检查授权状态失败: ${error.message}</div>`;
+            }
+        }
+
+        function goToLogin() {
+            addLog('重定向到授权页面...');
+            window.open('/auth/login', '_blank');
+        }
+
+        async function createSession() {
+            try {
+                addLog('正在创建会话...');
+                const response = await fetch('/session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: 'test-oauth-user' })
+                });
+
+                const data = await response.json();
+                addLog(`会话创建响应: ${JSON.stringify(data, null, 2)}`);
+
+                if (response.ok) {
+                    sessionResult.innerHTML = `
+                        <div class="success">
+                            ✅ 会话创建成功!<br>
+                            会话ID: ${data.sessionId}<br>
+                            WebSocket URL: ${data.wsUrl}
+                        </div>
+                    `;
+                } else {
+                    sessionResult.innerHTML = `
+                        <div class="error">
+                            ❌ 会话创建失败: ${data.message || data.error}<br>
+                            ${data.loginUrl ? `<a href="${data.loginUrl}" target="_blank">前往授权</a>` : ''}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                addLog(`创建会话失败: ${error.message}`);
+                sessionResult.innerHTML = `<div class="error">❌ 创建会话失败: ${error.message}</div>`;
+            }
+        }
+
+        async function checkHealth() {
+            try {
+                addLog('正在检查服务健康状态...');
+                const response = await fetch('/healthz');
+                const data = await response.json();
+                
+                addLog(`健康检查: ${JSON.stringify(data, null, 2)}`);
+                
+                healthResult.innerHTML = `
+                    <div class="success">
+                        ✅ 服务状态: ${data.status}<br>
+                        运行时间: ${Math.floor(data.uptime / 1000 / 60)}分钟<br>
+                        小智服务: ${data.services.xiaozhi}<br>
+                        活跃会话: ${data.services.sessions.active}/${data.services.sessions.total}<br>
+                        TTS存储: ${data.services.tts.stored}个文件
+                    </div>
+                `;
+            } catch (error) {
+                addLog(`健康检查失败: ${error.message}`);
+                healthResult.innerHTML = `<div class="error">❌ 健康检查失败: ${error.message}</div>`;
+            }
+        }
+
+        // 页面加载时自动检查授权状态
+        window.onload = () => {
+            addLog('OAuth授权测试页面加载完成');
+            checkAuthStatus();
+        };
+
+        // 监听页面焦点，授权回调后自动刷新状态
+        window.addEventListener('focus', () => {
+            addLog('页面重新获得焦点，检查授权状态...');
+            checkAuthStatus();
+        });
+    </script>
+</body>
+</html>

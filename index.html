@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live2D Model Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0b1c21;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            border: 2px solid #12b886; /* 临时边框，用于调试定位 */
+        }
+
+        #controls {
+            position: fixed;
+            top: 50px;
+            left: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 300px;
+        }
+
+        .control-group {
+            background: rgba(11, 28, 33, 0.9);
+            border: 1px solid #12b886;
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .control-group h3 {
+            margin: 0 0 10px 0;
+            color: #12b886;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .button-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .control-btn {
+            background-color: #12b886;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.2s;
+        }
+
+        .control-btn:hover {
+            background-color: #0ca26e;
+        }
+
+        .control-btn:active {
+            background-color: #099268;
+        }
+
+        #error-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: #dc3545;
+            color: white;
+            padding: 12px 20px;
+            text-align: center;
+            z-index: 2000;
+            display: none;
+            font-size: 14px;
+        }
+
+        #loading-status {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(11, 28, 33, 0.9);
+            color: #12b886;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #12b886;
+            text-align: center;
+            z-index: 1500;
+            font-size: 16px;
+        }
+
+        #voice-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            background: rgba(11, 28, 33, 0.9);
+            border: 1px solid #12b886;
+            border-radius: 12px;
+            padding: 15px 25px;
+        }
+
+        #voice-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 2px solid #12b886;
+            background: transparent;
+            color: #12b886;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #voice-btn:hover {
+            background: rgba(18, 184, 134, 0.1);
+            transform: scale(1.05);
+        }
+
+        #voice-btn.recording {
+            background: #dc3545;
+            border-color: #dc3545;
+            color: white;
+            animation: pulse 1.5s infinite;
+        }
+
+        #voice-btn.connecting {
+            background: #ffc107;
+            border-color: #ffc107;
+            color: #000;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        #voice-status {
+            color: #12b886;
+            font-size: 14px;
+            min-width: 120px;
+        }
+
+        #interrupt-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.2s;
+        }
+
+        #interrupt-btn:hover {
+            background: #c82333;
+        }
+
+        #interrupt-btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .loading-spinner {
+            border: 2px solid #12b886;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="error-bar"></div>
+    
+    <div id="loading-status">
+        <div class="loading-spinner"></div>
+        正在初始化 Live2D 应用...
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <div id="controls">
+        <div class="control-group">
+            <h3>Motions</h3>
+            <div id="motion-buttons" class="button-container"></div>
+        </div>
+        
+        <div class="control-group">
+            <h3>Expressions</h3>
+            <div id="expression-buttons" class="button-container"></div>
+        </div>
+    </div>
+
+    <div id="voice-controls">
+        <button id="voice-btn" title="长按说话">🎤</button>
+        <div id="voice-status">点击连接</div>
+        <button id="interrupt-btn" disabled>打断</button>
+    </div>
+
+    <!-- 脚本将动态加载以确保正确顺序 -->
+
+    <script>
+        // 动态脚本加载器
+        class ScriptLoader {
+            static loadScript(src, id = null, timeout = 30000) {
+                return new Promise((resolve, reject) => {
+                    console.log(`📥 开始加载脚本: ${src}`);
+                    
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.async = true;
+                    if (id) script.id = id;
+                    
+                    let timeoutId = setTimeout(() => {
+                        reject(new Error(`脚本加载超时: ${src}`));
+                    }, timeout);
+                    
+                    script.onload = () => {
+                        clearTimeout(timeoutId);
+                        console.log(`✓ 脚本加载成功: ${src}`);
+                        resolve();
+                    };
+                    
+                    script.onerror = (error) => {
+                        clearTimeout(timeoutId);
+                        console.error(`✗ 脚本加载失败: ${src}`, error);
+                        reject(new Error(`脚本加载失败: ${src}`));
+                    };
+                    
+                    document.head.appendChild(script);
+                });
+            }
+
+            static async loadScriptsSequentially() {
+                try {
+                    // 步骤 1: 加载 Live2D Cubism Core
+                    console.log('🚀 步骤 1: 加载 Live2D Cubism Core...');
+                    await this.loadScript('libs/live2dcubismcore.min.js', 'cubism-core');
+                    
+                    // 验证 Cubism Core 加载
+                    if (typeof Live2DCubismCore === 'undefined') {
+                        throw new Error('Live2DCubismCore 未正确加载');
+                    }
+                    console.log('✓ Live2DCubismCore 加载成功');
+                    
+                    // 步骤 2: 加载 PIXI.js
+                    console.log('🚀 步骤 2: 加载 PIXI.js...');
+                    await this.loadScript('https://unpkg.com/pixi.js@7/dist/pixi.min.js', 'pixi');
+                    
+                    // 验证 PIXI 加载并设置全局变量
+                    if (typeof PIXI === 'undefined') {
+                        throw new Error('PIXI 未正确加载');
+                    }
+                    window.PIXI = PIXI; // 立即设置全局变量
+                    console.log('✓ PIXI 加载成功并设置全局变量');
+                    
+                    // 步骤 3: 加载 pixi-live2d-display (多层降级策略)
+                    console.log('🚀 步骤 3: 加载 pixi-live2d-display...');
+                    await this.loadLive2DDisplay();
+                    
+                    console.log('🎉 所有脚本加载完成！');
+                    return true;
+                    
+                } catch (error) {
+                    console.error('❌ 脚本加载失败:', error);
+                    throw error;
+                }
+            }
+
+            static async loadLive2DDisplay() {
+                const strategies = [
+                    {
+                        name: '0.4.0 Cubism4专用版本',
+                        url: 'https://unpkg.com/pixi-live2d-display@0.4.0/dist/cubism4.min.js',
+                        id: 'live2d-cubism4'
+                    },
+                    {
+                        name: '0.4.0 完整版本（降级）',
+                        url: 'https://unpkg.com/pixi-live2d-display@0.4.0/dist/index.min.js',
+                        id: 'live2d-index'
+                    },
+                    {
+                        name: '0.5.0-beta Cubism4版本',
+                        url: 'https://unpkg.com/pixi-live2d-display@0.5.0-beta/dist/cubism4.min.js',
+                        id: 'live2d-beta-cubism4'
+                    },
+                    {
+                        name: '0.5.0-beta 完整版本',
+                        url: 'https://unpkg.com/pixi-live2d-display@0.5.0-beta/dist/index.min.js',
+                        id: 'live2d-beta-index'
+                    }
+                ];
+
+                for (let i = 0; i < strategies.length; i++) {
+                    const strategy = strategies[i];
+                    console.log(`📦 尝试策略 ${i + 1}: ${strategy.name}`);
+                    
+                    try {
+                        await this.loadScript(strategy.url, strategy.id);
+                        
+                        // 等待插件初始化
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        
+                        // 验证加载成功
+                        if (window.PIXI.live2d && window.PIXI.live2d.Live2DModel) {
+                            console.log(`✓ ${strategy.name} 加载成功！`);
+                            return;
+                        } else {
+                            throw new Error('插件未正确初始化');
+                        }
+                        
+                    } catch (error) {
+                        console.warn(`❌ 策略 ${i + 1} 失败: ${error.message}`);
+                        
+                        // 清理失败的脚本
+                        const script = document.getElementById(strategy.id);
+                        if (script) script.remove();
+                        
+                        // 如果是最后一个策略，抛出错误
+                        if (i === strategies.length - 1) {
+                            throw new Error('所有加载策略都失败了');
+                        }
+                        
+                        console.log(`🔄 尝试下一个策略...`);
+                    }
+                }
+            }
+
+            static async loadWithFallback() {
+                try {
+                    // 首次尝试 unpkg CDN
+                    console.log('🌐 尝试主CDN (unpkg)...');
+                    await this.loadScriptsSequentially();
+                } catch (error) {
+                    console.warn('🔄 主CDN失败，尝试备用CDN (jsDelivr)...');
+                    
+                    try {
+                        // 清理已加载的脚本
+                        const scriptIds = ['cubism-core', 'pixi', 'live2d-cubism4', 'live2d-index', 
+                                         'live2d-beta-cubism4', 'live2d-beta-index'];
+                        scriptIds.forEach(id => {
+                            const script = document.getElementById(id);
+                            if (script) script.remove();
+                        });
+                        
+                        // 重新加载，使用 jsDelivr CDN
+                        console.log('🚀 步骤 1 (jsDelivr): 加载 Live2D Cubism Core...');
+                        await this.loadScript('libs/live2dcubismcore.min.js', 'cubism-core-fallback');
+                        if (typeof Live2DCubismCore === 'undefined') {
+                            throw new Error('Live2DCubismCore 未正确加载');
+                        }
+                        
+                        console.log('🚀 步骤 2 (jsDelivr): 加载 PIXI.js...');
+                        await this.loadScript('https://cdn.jsdelivr.net/npm/pixi.js@7/dist/pixi.min.js', 'pixi-fallback');
+                        window.PIXI = PIXI;
+                        
+                        console.log('🚀 步骤 3 (jsDelivr): 加载 pixi-live2d-display...');
+                        await this.loadLive2DDisplayFallback();
+                        
+                        console.log('✓ 备用CDN加载成功');
+                        
+                    } catch (fallbackError) {
+                        console.error('❌ 备用CDN也失败:', fallbackError);
+                        throw new Error(`脚本加载彻底失败: 主CDN失败 - ${error.message}; 备用CDN失败 - ${fallbackError.message}`);
+                    }
+                }
+            }
+
+            static async loadLive2DDisplayFallback() {
+                const fallbackStrategies = [
+                    {
+                        name: 'jsDelivr 0.4.0 Cubism4专用',
+                        url: 'https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js',
+                        id: 'live2d-jsdelivr-cubism4'
+                    },
+                    {
+                        name: 'jsDelivr 0.4.0 完整版本',
+                        url: 'https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js',
+                        id: 'live2d-jsdelivr-index'
+                    }
+                ];
+
+                for (let i = 0; i < fallbackStrategies.length; i++) {
+                    const strategy = fallbackStrategies[i];
+                    console.log(`📦 备用策略 ${i + 1}: ${strategy.name}`);
+                    
+                    try {
+                        await this.loadScript(strategy.url, strategy.id);
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        
+                        if (window.PIXI.live2d && window.PIXI.live2d.Live2DModel) {
+                            console.log(`✓ ${strategy.name} 加载成功！`);
+                            return;
+                        } else {
+                            throw new Error('插件未正确初始化');
+                        }
+                        
+                    } catch (error) {
+                        console.warn(`❌ 备用策略 ${i + 1} 失败: ${error.message}`);
+                        const script = document.getElementById(strategy.id);
+                        if (script) script.remove();
+                        
+                        if (i === fallbackStrategies.length - 1) {
+                            throw new Error('所有备用策略都失败了');
+                        }
+                    }
+                }
+            }
+        }
+
+        // 小智网关客户端
+        class XiaozhiClient {
+            constructor() {
+                this.sessionId = null;
+                this.ws = null;
+                this.isConnected = false;
+                this.isRecording = false;
+                this.mediaRecorder = null;
+                this.audioStream = null;
+                
+                this.gatewayUrl = 'http://localhost:3000';
+                this.wsUrl = null;
+                
+                // 音频相关
+                this.audioContext = null;
+                this.processor = null;
+                
+                // UI元素
+                this.voiceBtn = null;
+                this.voiceStatus = null;
+                this.interruptBtn = null;
+                
+                // 回调
+                this.onSttResult = null;
+                this.onLlmResponse = null;
+                this.onTtsUrl = null;
+                this.onError = null;
+            }
+
+            async init() {
+                try {
+                    // 获取UI元素
+                    this.voiceBtn = document.getElementById('voice-btn');
+                    this.voiceStatus = document.getElementById('voice-status');
+                    this.interruptBtn = document.getElementById('interrupt-btn');
+
+                    // 绑定事件
+                    this.voiceBtn.addEventListener('mousedown', () => this.startVoiceInput());
+                    this.voiceBtn.addEventListener('mouseup', () => this.stopVoiceInput());
+                    this.voiceBtn.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        this.startVoiceInput();
+                    });
+                    this.voiceBtn.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        this.stopVoiceInput();
+                    });
+                    this.voiceBtn.addEventListener('click', () => this.connectToGateway());
+                    
+                    this.interruptBtn.addEventListener('click', () => this.interrupt());
+
+                    console.log('✓ XiaozhiClient 初始化完成');
+                } catch (error) {
+                    console.error('XiaozhiClient 初始化失败:', error);
+                    this.updateStatus('初始化失败');
+                }
+            }
+
+            async connectToGateway() {
+                if (this.isConnected) return;
+
+                try {
+                    this.updateStatus('正在连接...');
+                    this.voiceBtn.className = 'connecting';
+                    
+                    // 创建会话
+                    console.log('正在请求:', `${this.gatewayUrl}/session`);
+                    const response = await fetch(`${this.gatewayUrl}/session`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: 'live2d-user' })
+                    });
+                    console.log('收到响应:', response);
+
+                    if (!response.ok) {
+                        throw new Error(`会话创建失败: ${response.status}`);
+                    }
+
+                    const { sessionId, wsUrl } = await response.json();
+                    this.sessionId = sessionId;
+                    this.wsUrl = wsUrl.replace('http:', 'ws:');
+                    
+                    console.log('✓ 会话创建成功:', { sessionId, wsUrl: this.wsUrl });
+
+                    // 连接WebSocket
+                    await this.connectWebSocket();
+                    
+                } catch (error) {
+                    console.error('连接网关失败:', error);
+                    console.error('错误详情:', {
+                        message: error.message,
+                        stack: error.stack,
+                        type: error.constructor.name,
+                        gatewayUrl: this.gatewayUrl
+                    });
+                    this.updateStatus(`连接失败: ${error.message}`);
+                    this.voiceBtn.className = '';
+                    if (this.onError) this.onError(error);
+                }
+            }
+
+            async connectWebSocket() {
+                return new Promise((resolve, reject) => {
+                    try {
+                        this.ws = new WebSocket(this.wsUrl);
+                        
+                        this.ws.onopen = () => {
+                            console.log('✓ WebSocket连接成功');
+                            this.isConnected = true;
+                            this.updateStatus('长按说话');
+                            this.voiceBtn.className = '';
+                            this.interruptBtn.disabled = false;
+                            resolve();
+                        };
+
+                        this.ws.onmessage = (event) => {
+                            try {
+                                const message = JSON.parse(event.data);
+                                this.handleMessage(message);
+                            } catch (error) {
+                                console.error('解析消息失败:', error);
+                            }
+                        };
+
+                        this.ws.onclose = () => {
+                            console.log('WebSocket连接关闭');
+                            this.isConnected = false;
+                            this.updateStatus('连接断开');
+                            this.voiceBtn.className = '';
+                            this.interruptBtn.disabled = true;
+                        };
+
+                        this.ws.onerror = (error) => {
+                            console.error('WebSocket错误:', error);
+                            reject(error);
+                        };
+
+                        // 连接超时
+                        setTimeout(() => {
+                            if (!this.isConnected) {
+                                reject(new Error('WebSocket连接超时'));
+                            }
+                        }, 5000);
+
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            }
+
+            handleMessage(message) {
+                console.log('收到消息:', message);
+                
+                switch (message.type) {
+                    case 'stt':
+                        console.log('语音识别结果:', message.data.text);
+                        if (this.onSttResult) this.onSttResult(message.data.text);
+                        break;
+                        
+                    case 'llm':
+                        console.log('AI回复:', message.data.text);
+                        if (this.onLlmResponse) this.onLlmResponse(message.data.text);
+                        break;
+                        
+                    case 'tts_start':
+                        console.log('TTS开始');
+                        this.updateStatus('AI正在回复...');
+                        break;
+                        
+                    case 'tts_url':
+                        console.log('TTS音频URL:', message.data.url);
+                        this.updateStatus('播放回复中...');
+                        if (this.onTtsUrl) this.onTtsUrl(message.data.url);
+                        break;
+                        
+                    case 'tts_end':
+                        console.log('TTS结束');
+                        this.updateStatus('长按说话');
+                        break;
+                        
+                    case 'error':
+                        console.error('服务器错误:', message.data);
+                        this.updateStatus('服务器错误');
+                        if (this.onError) this.onError(new Error(message.data.message || '服务器错误'));
+                        break;
+                        
+                    default:
+                        console.log('未知消息类型:', message.type);
+                }
+            }
+
+            async startVoiceInput() {
+                if (!this.isConnected) {
+                    await this.connectToGateway();
+                    return;
+                }
+                
+                if (this.isRecording) return;
+
+                try {
+                    console.log('开始录音...');
+                    this.isRecording = true;
+                    this.voiceBtn.className = 'recording';
+                    this.updateStatus('正在录音...');
+
+                    // 获取音频流
+                    this.audioStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            sampleRate: 16000,
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true
+                        }
+                    });
+
+                    // 创建AudioContext和处理器
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ 
+                        sampleRate: 16000 
+                    });
+                    
+                    const source = this.audioContext.createMediaStreamSource(this.audioStream);
+                    
+                    // 使用ScriptProcessorNode处理音频
+                    this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+                    
+                    this.processor.onaudioprocess = (event) => {
+                        if (!this.isRecording) return;
+                        
+                        const inputBuffer = event.inputBuffer;
+                        const inputData = inputBuffer.getChannelData(0);
+                        
+                        // 转换为16位PCM
+                        const pcmData = this.float32To16BitPCM(inputData);
+                        
+                        // 发送到网关
+                        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                            this.ws.send(pcmData);
+                        }
+                    };
+
+                    source.connect(this.processor);
+                    this.processor.connect(this.audioContext.destination);
+
+                } catch (error) {
+                    console.error('开始录音失败:', error);
+                    this.stopVoiceInput();
+                    this.updateStatus('录音失败');
+                    if (this.onError) this.onError(error);
+                }
+            }
+
+            stopVoiceInput() {
+                if (!this.isRecording) return;
+
+                try {
+                    console.log('停止录音...');
+                    this.isRecording = false;
+                    this.voiceBtn.className = '';
+                    this.updateStatus('处理中...');
+
+                    // 清理音频资源
+                    if (this.processor) {
+                        this.processor.disconnect();
+                        this.processor = null;
+                    }
+
+                    if (this.audioContext) {
+                        this.audioContext.close();
+                        this.audioContext = null;
+                    }
+
+                    if (this.audioStream) {
+                        this.audioStream.getTracks().forEach(track => track.stop());
+                        this.audioStream = null;
+                    }
+
+                } catch (error) {
+                    console.error('停止录音失败:', error);
+                }
+            }
+
+            float32To16BitPCM(float32Array) {
+                const buffer = new ArrayBuffer(float32Array.length * 2);
+                const view = new DataView(buffer);
+                let offset = 0;
+                
+                for (let i = 0; i < float32Array.length; i++, offset += 2) {
+                    let sample = Math.max(-1, Math.min(1, float32Array[i]));
+                    sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+                    view.setInt16(offset, sample, true);
+                }
+                
+                return buffer;
+            }
+
+            interrupt() {
+                if (!this.isConnected || !this.ws) return;
+
+                try {
+                    console.log('发送打断信号...');
+                    this.ws.send(JSON.stringify({ type: 'interrupt' }));
+                    this.updateStatus('已打断');
+                } catch (error) {
+                    console.error('打断失败:', error);
+                    if (this.onError) this.onError(error);
+                }
+            }
+
+            updateStatus(status) {
+                if (this.voiceStatus) {
+                    this.voiceStatus.textContent = status;
+                }
+            }
+
+            disconnect() {
+                this.stopVoiceInput();
+                
+                if (this.ws) {
+                    this.ws.close();
+                    this.ws = null;
+                }
+                
+                this.isConnected = false;
+                this.sessionId = null;
+                this.wsUrl = null;
+                this.updateStatus('已断开');
+                
+                if (this.interruptBtn) {
+                    this.interruptBtn.disabled = true;
+                }
+            }
+        }
+
+        class Live2DApp {
+            constructor() {
+                this.app = null;
+                this.model = null;
+                this.modelSettings = null;
+                this.errorBar = document.getElementById('error-bar');
+                this.loadingStatus = document.getElementById('loading-status');
+                
+                // 小智客户端
+                this.xiaozhiClient = new XiaozhiClient();
+                this.currentTTSAudio = null;
+                
+                this.init();
+            }
+
+            showError(message) {
+                console.error(message);
+                this.errorBar.textContent = message;
+                this.errorBar.style.display = 'block';
+                this.hideLoading();
+            }
+
+            hideError() {
+                this.errorBar.style.display = 'none';
+            }
+
+            updateLoadingStatus(message) {
+                console.log(`📍 ${message}`);
+                if (this.loadingStatus) {
+                    this.loadingStatus.innerHTML = `<div class="loading-spinner"></div>${message}`;
+                }
+            }
+
+            hideLoading() {
+                if (this.loadingStatus) {
+                    this.loadingStatus.style.display = 'none';
+                }
+            }
+
+            async checkModelFile() {
+                const modelPath = 'Mould/Z.model3.json';
+                try {
+                    const response = await fetch(modelPath, { method: 'HEAD' });
+                    console.log(`HEAD ${modelPath}: ${response.status}`);
+                    
+                    if (!response.ok) {
+                        this.showError('请通过 HTTP 打开而不是 file://，并检查路径大小写');
+                        return false;
+                    }
+                    return true;
+                } catch (error) {
+                    console.log(`HEAD ${modelPath}: 请求失败`);
+                    this.showError('请通过 HTTP 打开而不是 file://，并检查路径大小写');
+                    return false;
+                }
+            }
+
+            async init() {
+                try {
+                    this.updateLoadingStatus('正在初始化 Live2D 应用...');
+                    
+                    // 使用新的脚本加载器
+                    this.updateLoadingStatus('正在按顺序加载脚本依赖...');
+                    await ScriptLoader.loadWithFallback();
+                    
+                    // 检查模型文件是否可访问
+                    this.updateLoadingStatus('正在检查模型文件...');
+                    const modelAccessible = await this.checkModelFile();
+                    if (!modelAccessible) {
+                        return;
+                    }
+
+                    // 创建 PIXI 应用 - 使用简化配置
+                    this.updateLoadingStatus('正在创建 PIXI 应用...');
+                    this.app = new window.PIXI.Application({
+                        view: document.getElementById('canvas'),
+                        width: window.innerWidth,
+                        height: window.innerHeight,
+                        backgroundColor: 0x0b1c21 // 直接设置背景色
+                    });
+
+                    console.log('✓ PIXI 应用创建成功');
+
+                    // 窗口大小调整
+                    window.addEventListener('resize', () => this.resize());
+
+                    // 加载模型
+                    this.updateLoadingStatus('正在加载 Live2D 模型...');
+                    await this.loadModel();
+                    
+                } catch (error) {
+                    this.showError(`初始化失败: ${error.message}`);
+                    console.error('初始化详细错误:', error);
+                }
+            }
+
+            async loadModel() {
+                try {
+                    const modelPath = 'Mould/Z.model3.json';
+                    
+                    console.log('开始加载模型:', modelPath);
+                    
+                    // 使用官方推荐的 Live2DModel.from() 方法
+                    this.updateLoadingStatus('正在解析模型文件...');
+                    this.model = await window.PIXI.live2d.Live2DModel.from(modelPath);
+                    
+                    if (!this.model) {
+                        throw new Error('模型对象为空');
+                    }
+
+                    console.log('✓ 模型加载成功，开始设置...');
+                    this.updateLoadingStatus('正在设置模型参数...');
+
+                    // 获取模型设置 - 使用正确的访问方式
+                    this.modelSettings = this.model.internalModel.settings;
+                    
+                    // 打印调试信息
+                    console.log('模型设置信息:');
+                    if (this.modelSettings.motions) {
+                        console.table(this.modelSettings.motions);
+                    }
+                    if (this.modelSettings.expressions) {
+                        console.table(this.modelSettings.expressions);
+                    }
+
+                    // 添加模型到舞台
+                    this.updateLoadingStatus('正在将模型添加到舞台...');
+                    this.app.stage.addChild(this.model);
+
+                    // 设置模型位置和缩放
+                    this.updateLoadingStatus('正在调整模型位置...');
+                    this.positionModel();
+
+                    // 创建控制按钮
+                    this.updateLoadingStatus('正在创建控制按钮...');
+                    this.createControls();
+
+                    // 初始化小智客户端
+                    this.updateLoadingStatus('正在初始化语音功能...');
+                    await this.setupXiaozhiClient();
+
+                    this.hideError();
+                    this.hideLoading();
+                    console.log('✓ Live2D 模型和语音功能完全设置完成');
+
+                } catch (error) {
+                    this.showError(`模型加载失败: ${error.message}`);
+                    console.error('模型加载详细错误:', error);
+                    console.error('错误堆栈:', error.stack);
+                }
+            }
+
+            positionModel() {
+                if (!this.model) return;
+
+                const canvas = this.app.view;
+                const canvasWidth = canvas.width;
+                const canvasHeight = canvas.height;
+
+                console.log(`🔍 画布尺寸: ${canvasWidth} x ${canvasHeight}`);
+
+                // 先重置模型位置和缩放
+                this.model.x = 0;
+                this.model.y = 0;
+                this.model.scale.set(1);
+
+                // 获取模型的原始边界
+                const originalBounds = this.model.getBounds();
+                console.log(`🔍 原始边界:`, {
+                    x: originalBounds.x,
+                    y: originalBounds.y, 
+                    width: originalBounds.width,
+                    height: originalBounds.height
+                });
+
+                // 设置锚点到模型中心
+                this.model.anchor.set(0.5, 0.5);
+                
+                // 重新获取边界（设置锚点后）
+                const bounds = this.model.getBounds();
+                const modelWidth = bounds.width;
+                const modelHeight = bounds.height;
+                
+                console.log(`🔍 锚点设置后边界: ${modelWidth} x ${modelHeight}`);
+
+                // 计算适合的缩放比例
+                const scaleX = (canvasWidth * 0.8) / modelWidth; // 80% 画布宽度
+                const scaleY = (canvasHeight * 0.8) / modelHeight; // 80% 画布高度
+                const scale = Math.min(scaleX, scaleY);
+
+                console.log(`🔍 缩放计算: scaleX=${scaleX.toFixed(2)}, scaleY=${scaleY.toFixed(2)}, final=${scale.toFixed(2)}`);
+
+                // 应用缩放
+                this.model.scale.set(scale);
+
+                // 将模型放置在画布正中心
+                this.model.x = canvasWidth / 2;
+                this.model.y = canvasHeight / 2;
+
+                // 获取最终边界进行验证
+                const finalBounds = this.model.getBounds();
+                
+                console.log(`✓ 最终模型定位:`);
+                console.log(`  位置: (${this.model.x}, ${this.model.y})`);
+                console.log(`  缩放: ${scale.toFixed(2)}`);
+                console.log(`  最终边界:`, {
+                    x: finalBounds.x.toFixed(2),
+                    y: finalBounds.y.toFixed(2),
+                    width: finalBounds.width.toFixed(2),
+                    height: finalBounds.height.toFixed(2)
+                });
+
+                // 检查是否在画布范围内
+                const isInBounds = finalBounds.x >= 0 && 
+                                 finalBounds.y >= 0 && 
+                                 finalBounds.x + finalBounds.width <= canvasWidth &&
+                                 finalBounds.y + finalBounds.height <= canvasHeight;
+                                 
+                console.log(`✓ 模型是否完全在画布内: ${isInBounds}`);
+            }
+
+            createControls() {
+                if (!this.modelSettings) return;
+
+                this.createMotionButtons();
+                this.createExpressionButtons();
+            }
+
+            createMotionButtons() {
+                const motionContainer = document.getElementById('motion-buttons');
+                const motions = this.modelSettings.motions;
+
+                Object.keys(motions).forEach(group => {
+                    motions[group].forEach((motion, index) => {
+                        const button = document.createElement('button');
+                        const fileName = motion.File.split('/').pop().replace('.motion3.json', '');
+                        button.textContent = fileName;
+                        button.className = 'control-btn';
+                        
+                        button.onclick = () => {
+                            this.playMotion(group, index, fileName);
+                        };
+                        
+                        motionContainer.appendChild(button);
+                    });
+                });
+            }
+
+            createExpressionButtons() {
+                const expressionContainer = document.getElementById('expression-buttons');
+                const expressions = this.modelSettings.expressions;
+
+                expressions.forEach((expression, index) => {
+                    const button = document.createElement('button');
+                    const name = expression.Name || expression.File.split('/').pop().replace('.exp3.json', '');
+                    button.textContent = name;
+                    button.className = 'control-btn';
+                    
+                    button.onclick = () => {
+                        this.playExpression(index, name);
+                    };
+                    
+                    expressionContainer.appendChild(button);
+                });
+            }
+
+            playMotion(group, index, fileName) {
+                if (!this.model) {
+                    console.warn('模型未加载，无法播放动作');
+                    return;
+                }
+
+                try {
+                    // 使用官方推荐的 API
+                    this.model.motion(group, index, 3); // 第三个参数是优先级
+                    console.log(`✓ 播放动作: 组="${group}", 索引=${index}, 文件=${fileName}`);
+                } catch (error) {
+                    console.error(`播放动作失败: ${error.message}`);
+                    // 如果新API失败，尝试旧API作为兜底
+                    try {
+                        this.model.internalModel.motionManager.startMotion(group, index, 3);
+                        console.log(`✓ 使用兜底API播放动作: 组="${group}", 索引=${index}`);
+                    } catch (fallbackError) {
+                        console.error(`兜底API也失败: ${fallbackError.message}`);
+                    }
+                }
+            }
+
+            playExpression(index, name) {
+                if (!this.model) {
+                    console.warn('模型未加载，无法播放表情');
+                    return;
+                }
+
+                try {
+                    // 使用官方推荐的 API
+                    this.model.expression(name || index);
+                    console.log(`✓ 播放表情: 索引=${index}, 名称=${name}`);
+                } catch (error) {
+                    console.error(`播放表情失败: ${error.message}`);
+                    // 如果新API失败，尝试旧API作为兜底
+                    try {
+                        this.model.internalModel.expressionManager.setExpression(index);
+                        console.log(`✓ 使用兜底API播放表情: 索引=${index}`);
+                    } catch (fallbackError) {
+                        console.error(`兜底API也失败: ${fallbackError.message}`);
+                    }
+                }
+            }
+
+            resize() {
+                if (!this.app) return;
+
+                this.app.renderer.resize(window.innerWidth, window.innerHeight);
+                this.positionModel();
+            }
+
+            async setupXiaozhiClient() {
+                try {
+                    // 设置回调函数
+                    this.xiaozhiClient.onSttResult = (text) => {
+                        console.log('📝 语音识别:', text);
+                        // 可以在这里显示识别结果
+                    };
+
+                    this.xiaozhiClient.onLlmResponse = (text) => {
+                        console.log('🤖 AI回复:', text);
+                        // 开始说话动作
+                        this.playTalk();
+                    };
+
+                    this.xiaozhiClient.onTtsUrl = async (url) => {
+                        console.log('🔊 播放TTS:', url);
+                        try {
+                            // 停止之前的音频
+                            this.stopCurrentTTS();
+                            
+                            // 播放新的TTS音频
+                            this.currentTTSAudio = new Audio(url);
+                            this.currentTTSAudio.volume = 0.8;
+                            
+                            // 音频结束后回到待机状态
+                            this.currentTTSAudio.onended = () => {
+                                console.log('🔊 TTS播放完成');
+                                this.playIdle();
+                                this.currentTTSAudio = null;
+                            };
+                            
+                            this.currentTTSAudio.onerror = (error) => {
+                                console.error('🔊 TTS播放失败:', error);
+                                this.playIdle();
+                                this.currentTTSAudio = null;
+                            };
+                            
+                            await this.currentTTSAudio.play();
+                            
+                        } catch (error) {
+                            console.error('播放TTS音频失败:', error);
+                            this.playIdle();
+                        }
+                    };
+
+                    this.xiaozhiClient.onError = (error) => {
+                        console.error('🚨 小智客户端错误:', error);
+                        this.showError(`语音功能错误: ${error.message}`);
+                    };
+
+                    // 初始化小智客户端
+                    await this.xiaozhiClient.init();
+                    
+                    console.log('✓ 小智客户端设置完成');
+                } catch (error) {
+                    console.error('设置小智客户端失败:', error);
+                    // 不阻止应用启动，语音功能可选
+                }
+            }
+
+            stopCurrentTTS() {
+                if (this.currentTTSAudio) {
+                    this.currentTTSAudio.pause();
+                    this.currentTTSAudio.currentTime = 0;
+                    this.currentTTSAudio = null;
+                }
+            }
+
+            // 全局方法：播放说话动作
+            playTalk() {
+                if (!this.model) {
+                    console.log('playTalk(): 模型未加载');
+                    return;
+                }
+
+                if (!this.modelSettings || !this.modelSettings.motions) {
+                    console.log('playTalk(): 模型设置未找到');
+                    return;
+                }
+
+                const motions = this.modelSettings.motions;
+                let talkMotion = null;
+                let talkGroup = '';
+                let talkIndex = -1;
+
+                // 在所有动作中寻找包含 talk 或 kaixin 的
+                Object.keys(motions).forEach(group => {
+                    motions[group].forEach((motion, index) => {
+                        const fileName = motion.File.toLowerCase();
+                        if (fileName.includes('talk') || fileName.includes('kaixin')) {
+                            talkMotion = motion;
+                            talkGroup = group;
+                            talkIndex = index;
+                            return;
+                        }
+                    });
+                });
+
+                // 如果没找到，使用第一个动作
+                if (!talkMotion) {
+                    const firstGroup = Object.keys(motions)[0];
+                    if (firstGroup && motions[firstGroup].length > 0) {
+                        talkMotion = motions[firstGroup][0];
+                        talkGroup = firstGroup;
+                        talkIndex = 0;
+                    }
+                }
+
+                if (talkMotion) {
+                    const fileName = talkMotion.File.split('/').pop().replace('.motion3.json', '');
+                    this.playMotion(talkGroup, talkIndex, fileName);
+                    console.log(`✓ playTalk() 执行成功 - 使用动作: ${fileName}`);
+                } else {
+                    console.log('playTalk(): 未找到可播放的动作');
+                }
+            }
+
+            // 全局方法：播放待机动作
+            playIdle() {
+                if (!this.model) {
+                    console.log('playIdle(): 模型未加载');
+                    return;
+                }
+
+                if (!this.modelSettings || !this.modelSettings.motions) {
+                    console.log('playIdle(): 模型设置未找到');
+                    return;
+                }
+
+                const motions = this.modelSettings.motions;
+                let idleMotion = null;
+                let idleGroup = '';
+                let idleIndex = -1;
+
+                // 寻找 Idle 组或包含 idle 的动作
+                Object.keys(motions).forEach(group => {
+                    if (group.toLowerCase() === 'idle') {
+                        if (motions[group].length > 0) {
+                            idleMotion = motions[group][0];
+                            idleGroup = group;
+                            idleIndex = 0;
+                            return;
+                        }
+                    }
+                    
+                    motions[group].forEach((motion, index) => {
+                        const fileName = motion.File.toLowerCase();
+                        if (fileName.includes('idle')) {
+                            idleMotion = motion;
+                            idleGroup = group;
+                            idleIndex = index;
+                            return;
+                        }
+                    });
+                });
+
+                if (idleMotion) {
+                    const fileName = idleMotion.File.split('/').pop().replace('.motion3.json', '');
+                    this.playMotion(idleGroup, idleIndex, fileName);
+                    console.log(`✓ playIdle() 执行成功 - 使用动作: ${fileName}`);
+                } else {
+                    console.log('playIdle(): 未找到 Idle 待机动作，忽略');
+                }
+            }
+        }
+
+        // 使用 window.onload 确保所有资源加载完成
+        window.onload = () => {
+            console.log('📍 页面和所有资源加载完成，开始初始化...');
+            try {
+                window.live2dApp = new Live2DApp();
+            } catch (error) {
+                console.error('应用初始化失败:', error);
+                document.getElementById('loading-status').innerHTML = 
+                    `<div style="color: #dc3545;">初始化失败: ${error.message}</div>`;
+            }
+        };
+
+        // 暴露全局方法
+        window.playTalk = () => {
+            if (window.live2dApp && window.live2dApp.model) {
+                window.live2dApp.playTalk();
+            } else {
+                console.log('应用或模型未加载完成');
+            }
+        };
+
+        window.playIdle = () => {
+            if (window.live2dApp && window.live2dApp.model) {
+                window.live2dApp.playIdle();
+            } else {
+                console.log('应用或模型未加载完成');
+            }
+        };
+
+        // 页面卸载时清理资源
+        window.addEventListener('beforeunload', () => {
+            if (window.live2dApp && window.live2dApp.xiaozhiClient) {
+                window.live2dApp.xiaozhiClient.disconnect();
+            }
+            if (window.live2dApp) {
+                window.live2dApp.stopCurrentTTS();
+            }
+        });
+    </script>
+</body>
+</html>
+
+<!-- 
+========== 如何启动本地服务器 ==========
+
+方法1 - Python (推荐):
+    python -m http.server 8000
+    然后访问: http://localhost:8000/
+
+方法2 - Node.js:
+    npx http-server -p 8000
+    然后访问: http://localhost:8000/
+
+方法3 - VSCode Live Server:
+    安装 Live Server 插件 -> 右键 index.html -> "Open with Live Server"
+
+========== 为什么不能用 file:// ==========
+
+直接双击 HTML 文件会使用 file:// 协议，这会导致:
+- CORS 策略阻止加载本地资源 (.json, .moc3 文件)
+- 某些 Web API 在 file:// 下不可用
+- Live2D 模型无法正常加载
+
+========== 常见问题解决 ==========
+
+1. 404 错误:
+   - 检查文件路径大小写 (特别是 Linux/Mac 系统)
+   - 确保 Mould/ 文件夹和模型文件存在
+   - 确保 libs/live2dcubismcore.min.js 存在
+
+2. CORS 错误:
+   - 必须使用 HTTP 服务器，不能直接打开 HTML 文件
+   - 检查服务器是否正确运行
+
+3. 模型不显示:
+   - 打开浏览器控制台查看错误信息
+   - 检查 HEAD 请求返回状态码
+   - 确认所有脚本正确加载
+
+4. MIME 类型错误:
+   - 确保服务器支持 .json, .moc3 等文件类型
+   - Python 和 Node.js 的 http-server 通常自动处理
+-->
