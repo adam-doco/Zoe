@@ -40,6 +40,432 @@
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
             backdrop-filter: blur(10px);
             max-width: 300px;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        
+        /* 折叠状态 */
+        .controls.collapsed {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        
+        /* 折叠按钮 */
+        .collapse-btn {
+            position: absolute;
+            left: -50px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.95);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: #333;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            z-index: 101;
+        }
+        
+        .collapse-btn:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: translateY(-50%) scale(1.1);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        }
+        
+        .collapse-btn .arrow {
+            transition: transform 0.3s ease;
+        }
+        
+        .controls.collapsed .collapse-btn .arrow {
+            transform: rotate(180deg);
+        }
+
+        /* 固定召唤按钮 - 当菜单折叠时显示 */
+        .summon-btn {
+            position: fixed;
+            top: 50%;
+            right: 10px;
+            transform: translateY(-50%);
+            width: 45px;
+            height: 45px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 102;
+        }
+        
+        .summon-btn:hover {
+            transform: translateY(-50%) scale(1.1);
+            box-shadow: 0 6px 25px rgba(102, 126, 234, 0.5);
+        }
+        
+        /* 当菜单折叠时显示召唤按钮 */
+        .controls.collapsed + .summon-btn {
+            display: flex;
+        }
+        
+        /* 备用：通过JavaScript类控制 */
+        .summon-btn.show {
+            display: flex;
+        }
+
+        /* 底部输入区域 */
+        .input-area {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            align-items: stretch;
+            background: rgba(255, 255, 255, 0.98);
+            border-radius: 25px;
+            padding: 5px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            min-width: 400px;
+            max-width: 550px;
+            height: 50px;
+        }
+
+        /* 左侧语音按钮容器 */
+        .voice-section {
+            display: flex;
+            align-items: center;
+            padding: 0 5px;
+        }
+
+        /* 语音按钮 */
+        .voice-input-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #00d4aa, #00c4a7);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 10px rgba(0, 212, 170, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .voice-input-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0));
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .voice-input-btn:hover::before {
+            opacity: 1;
+        }
+
+        .voice-input-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 20px rgba(0, 212, 170, 0.4);
+        }
+
+        .voice-input-btn.recording {
+            background: linear-gradient(135deg, #ff4757, #ff3838);
+            animation: recordingPulse 1.5s ease-in-out infinite;
+            box-shadow: 0 4px 20px rgba(255, 71, 87, 0.5);
+        }
+
+        /* 文字输入区域 */
+        .text-section {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+
+        .text-input {
+            width: 100%;
+            border: none;
+            outline: none;
+            background: transparent;
+            font-size: 15px;
+            padding: 12px 15px;
+            color: #2c3e50;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-weight: 400;
+        }
+
+        .text-input::placeholder {
+            color: #95a5a6;
+            font-weight: 300;
+        }
+
+        /* 发送按钮 */
+        .send-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+            margin-right: 5px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .send-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0));
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .send-btn:hover::before {
+            opacity: 1;
+        }
+
+        .send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .send-btn:disabled {
+            background: linear-gradient(135deg, #bdc3c7, #95a5a6);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 录音动画 */
+        @keyframes recordingPulse {
+            0%, 100% { 
+                transform: scale(1);
+                box-shadow: 0 4px 20px rgba(255, 71, 87, 0.5);
+            }
+            50% { 
+                transform: scale(1.05);
+                box-shadow: 0 6px 25px rgba(255, 71, 87, 0.7);
+            }
+        }
+
+        /* 聊天显示区域 */
+        .chat-area {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 75%;
+            max-width: 450px; /* 进一步缩小宽度 */
+            height: 220px; /* 降低高度 */
+            z-index: 90;
+            display: flex;
+            flex-direction: column;
+            pointer-events: none; /* 让点击穿透，不阻挡Live2D模型交互 */
+        }
+
+        /* 聊天消息容器 */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px; /* 大幅减少间距 */
+            pointer-events: auto; /* 消息区域可以交互 */
+        }
+
+        /* 隐藏滚动条但保持滚动功能 */
+        .chat-messages::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        /* 消息气泡 */
+        .message {
+            display: flex;
+            align-items: flex-end;
+            margin-bottom: 2px; /* 减少底部边距 */
+            animation: messageSlideIn 0.3s ease-out;
+        }
+
+        /* 用户消息 (右侧) */
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.user .bubble {
+            background: linear-gradient(135deg, rgba(0, 212, 170, 0.85), rgba(0, 196, 167, 0.85));
+            color: white;
+            margin-left: 40px; /* 减少左边距 */
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* AI消息 (左侧) */
+        .message.ai {
+            justify-content: flex-start;
+        }
+
+        .message.ai .bubble {
+            background: rgba(255, 255, 255, 0.75);
+            color: #2c3e50;
+            margin-right: 40px; /* 减少右边距 */
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* 消息气泡内容 */
+        .bubble {
+            max-width: 280px; /* 调整适合新宽度 */
+            padding: 8px 12px; /* 减少内边距 */
+            border-radius: 16px; /* 稍微调小圆角 */
+            font-size: 14px;
+            line-height: 1.3; /* 减少行高 */
+            word-wrap: break-word;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+            position: relative;
+        }
+
+        /* 用户消息气泡尾巴 */
+        .message.user .bubble::after {
+            content: '';
+            position: absolute;
+            right: -6px;
+            bottom: 8px;
+            width: 0;
+            height: 0;
+            border-left: 8px solid rgba(0, 196, 167, 0.85);
+            border-top: 6px solid transparent;
+            border-bottom: 6px solid transparent;
+        }
+
+        /* AI消息气泡尾巴 */
+        .message.ai .bubble::after {
+            content: '';
+            position: absolute;
+            left: -6px;
+            bottom: 8px;
+            width: 0;
+            height: 0;
+            border-right: 8px solid rgba(255, 255, 255, 0.75);
+            border-top: 6px solid transparent;
+            border-bottom: 6px solid transparent;
+        }
+
+        /* 消息进入动画 */
+        @keyframes messageSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* 正在输入指示器 */
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            margin-bottom: 4px; /* 减少底部边距 */
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .typing-indicator.show {
+            opacity: 1;
+        }
+
+        .typing-indicator .bubble {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 16px; /* 减少内边距 */
+            margin-right: 40px; /* 减少右边距 */
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-dots span {
+            width: 6px;
+            height: 6px;
+            background: #95a5a6;
+            border-radius: 50%;
+            animation: typingDots 1.4s ease-in-out infinite;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typingDots {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.4;
+            }
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+        }
+
+        /* 脉冲动画 */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
         }
 
         .control-group {
@@ -213,7 +639,11 @@
     <div id="error-bar" class="error-bar"></div>
     
     <!-- 控制面板 -->
-    <div class="controls">
+    <div class="controls collapsed" id="controls-panel">
+        <!-- 折叠按钮 -->
+        <button class="collapse-btn" id="collapse-btn" onclick="toggleControlPanel()">
+            <span class="arrow">◀</span>
+        </button>
         <!-- 语音控制 -->
         <div class="control-group">
             <h3>🎤 语音对话</h3>
@@ -257,6 +687,189 @@
 
     <!-- 核心脚本 -->
     <script>
+        // ========== 折叠控制函数 ==========
+        function toggleControlPanel() {
+            const panel = document.getElementById('controls-panel');
+            const summonBtn = document.getElementById('summon-btn');
+            
+            panel.classList.toggle('collapsed');
+            
+            // 控制召唤按钮的显示/隐藏
+            if (panel.classList.contains('collapsed')) {
+                summonBtn.classList.add('show');
+            } else {
+                summonBtn.classList.remove('show');
+            }
+        }
+
+        // ========== 底部输入区域控制 ==========
+        let isRecording = false;
+        
+        function toggleVoiceInput() {
+            const voiceBtn = document.getElementById('voice-input-btn');
+            
+            if (!isRecording) {
+                // 开始录音
+                startVoiceRecording();
+            } else {
+                // 停止录音
+                stopVoiceRecording();
+            }
+        }
+        
+        function startVoiceRecording() {
+            const voiceBtn = document.getElementById('voice-input-btn');
+            const micIcon = document.getElementById('mic-icon');
+            const recordingIcon = document.getElementById('recording-icon');
+            
+            voiceBtn.classList.add('recording');
+            micIcon.style.display = 'none';
+            recordingIcon.style.display = 'block';
+            voiceBtn.title = '点击停止录音';
+            isRecording = true;
+            
+            // 这里可以集成语音识别功能
+            console.log('🎙️ 开始语音录音...');
+            
+            // 模拟录音过程 - 实际项目中替换为真实的语音识别
+            // 可以集成Web Speech API或者连接到语音服务
+        }
+        
+        function stopVoiceRecording() {
+            const voiceBtn = document.getElementById('voice-input-btn');
+            const micIcon = document.getElementById('mic-icon');
+            const recordingIcon = document.getElementById('recording-icon');
+            
+            voiceBtn.classList.remove('recording');
+            micIcon.style.display = 'block';
+            recordingIcon.style.display = 'none';
+            voiceBtn.title = '点击开始语音输入';
+            isRecording = false;
+            
+            console.log('⏹️ 停止语音录音...');
+            
+            // 这里处理录音结果
+            // 可以发送到语音识别服务或直接处理
+        }
+        
+        function handleTextInput(event) {
+            if (event.key === 'Enter') {
+                sendTextMessage();
+            }
+        }
+        
+        function sendTextMessage() {
+            const textInput = document.getElementById('text-input');
+            const message = textInput.value.trim();
+            
+            if (message) {
+                console.log('发送文字消息:', message);
+                
+                // 这里可以集成到现有的AI对话系统
+                // 例如连接到小智AI或其他聊天机器人
+                
+                // 清空输入框
+                textInput.value = '';
+                
+                // 可以触发Live2D说话动作
+                if (window.Live2DAPI) {
+                    Live2DAPI.action.talk();
+                }
+                
+                // 这里可以添加消息发送逻辑
+                processTextMessage(message);
+            }
+        }
+        
+        function processTextMessage(message) {
+            // 处理文字消息的函数
+            console.log('处理消息:', message);
+            
+            // 添加用户消息到聊天区域
+            addChatMessage(message, 'user');
+            
+            // 显示正在输入指示器
+            showTypingIndicator();
+            
+            // 模拟AI回复 (实际项目中替换为真实的AI服务调用)
+            setTimeout(() => {
+                hideTypingIndicator();
+                
+                // 模拟不同的回复
+                const aiResponses = [
+                    "很有趣的问题！让我想想... 🤔",
+                    "我理解你的意思，这确实是个好想法。",
+                    "谢谢你的分享！你说得很有道理。",
+                    "这个话题很深刻，我们可以继续探讨。",
+                    "你的观点让我学到了很多！"
+                ];
+                
+                const randomResponse = aiResponses[Math.floor(Math.random() * aiResponses.length)];
+                addChatMessage(randomResponse, 'ai');
+                
+                // 触发Live2D说话动作
+                if (window.Live2DAPI) {
+                    Live2DAPI.action.talk();
+                }
+            }, 1000 + Math.random() * 2000); // 1-3秒随机延迟
+        }
+
+        // ========== 聊天界面功能 ==========
+        
+        function addChatMessage(text, sender) {
+            const chatMessages = document.getElementById('chat-messages');
+            
+            // 创建消息元素
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'bubble';
+            bubbleDiv.textContent = text;
+            
+            messageDiv.appendChild(bubbleDiv);
+            chatMessages.appendChild(messageDiv);
+            
+            // 自动滚动到底部
+            scrollToBottom();
+        }
+        
+        function showTypingIndicator() {
+            const indicator = document.getElementById('typing-indicator');
+            indicator.classList.add('show');
+            scrollToBottom();
+        }
+        
+        function hideTypingIndicator() {
+            const indicator = document.getElementById('typing-indicator');
+            indicator.classList.remove('show');
+        }
+        
+        function scrollToBottom() {
+            const chatMessages = document.getElementById('chat-messages');
+            setTimeout(() => {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }, 100);
+        }
+        
+        // 添加一些示例消息用于演示
+        function addDemoMessages() {
+            setTimeout(() => {
+                addChatMessage("你好！", "user");
+            }, 1000);
+            
+            setTimeout(() => {
+                showTypingIndicator();
+                setTimeout(() => {
+                    hideTypingIndicator();
+                    addChatMessage("你好！很高兴认识你！有什么我可以帮助你的吗？", "ai");
+                    if (window.Live2DAPI) {
+                        Live2DAPI.action.kaixin(); // 播放开心动作
+                    }
+                }, 1500);
+            }, 2000);
+        }
+        
         // ========== 全局配置 ==========
         const XIAOZHI_CONFIG = {
             // 生产环境配置
@@ -2002,6 +2615,9 @@
                 
                 console.log('✅ 应用初始化完成');
                 
+                // 启用演示聊天消息 (可选 - 用于展示效果)
+                // addDemoMessages();
+                
             } catch (error) {
                 console.error('应用初始化失败:', error);
                 showError('应用启动失败: ' + error.message);
@@ -2019,5 +2635,66 @@
             showError('异步操作失败: ' + event.reason.message);
         });
     </script>
+
+    <!-- 固定召唤按钮 (当菜单折叠时显示) -->
+    <button class="summon-btn show" id="summon-btn" onclick="toggleControlPanel()" title="打开菜单">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+        </svg>
+    </button>
+
+    <!-- 聊天显示区域 -->
+    <div class="chat-area" id="chat-area">
+        <div class="chat-messages" id="chat-messages">
+            <!-- 欢迎消息 -->
+            <div class="message ai">
+                <div class="bubble">
+                    你好！我是小智，很高兴见到你！ 😊
+                </div>
+            </div>
+        </div>
+        
+        <!-- 正在输入指示器 -->
+        <div class="typing-indicator" id="typing-indicator">
+            <div class="bubble">
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部输入区域 -->
+    <div class="input-area" id="input-area">
+        <!-- 语音按钮区域 -->
+        <div class="voice-section">
+            <button class="voice-input-btn" id="voice-input-btn" onclick="toggleVoiceInput()" title="点击开始语音输入">
+                <!-- 麦克风图标 SVG -->
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" id="mic-icon">
+                    <path d="M12 1c-1.66 0-3 1.34-3 3v8c0 1.66 1.34 3 3 3s3-1.34 3-3V4c0-1.66-1.34-3-3-3zm0 18c-2.76 0-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V23h2v-2.08c3.39-.49 6-3.39 6-6.92h-2c0 2.76-2.24 5-5 5z"/>
+                </svg>
+                <!-- 录音图标 SVG (隐藏) -->
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" id="recording-icon" style="display: none;">
+                    <circle cx="12" cy="12" r="8"/>
+                </svg>
+            </button>
+        </div>
+        
+        <!-- 文字输入区域 -->
+        <div class="text-section">
+            <input type="text" class="text-input" id="text-input" placeholder="输入你想说的话..." 
+                   onkeypress="handleTextInput(event)">
+        </div>
+        
+        <!-- 发送按钮 -->
+        <button class="send-btn" id="send-btn" onclick="sendTextMessage()" title="发送消息">
+            <!-- 发送图标 SVG -->
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+        </button>
+    </div>
 </body>
 </html>
