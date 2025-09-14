@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live2D 表情测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .button-group {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .button-group h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        button {
+            margin: 5px;
+            padding: 8px 15px;
+            border: 1px solid #007bff;
+            background-color: #007bff;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .test-results {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #28a745;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+        .log {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎭 Live2D 表情和动作测试</h1>
+
+    <div class="button-group">
+        <h3>🎬 动作测试 (Actions)</h3>
+        <button onclick="testAction('idle')">待机 (idle)</button>
+        <button onclick="testAction('talk')">说话 (talk)</button>
+        <button onclick="testAction('kaixin')">开心 (kaixin)</button>
+        <button onclick="testAction('jingya')">惊讶 (jingya)</button>
+        <button onclick="testAction('shengqi')">生气 (shengqi)</button>
+        <button onclick="testAction('wink')">眨眼 (wink)</button>
+        <button onclick="testAction('yaotou')">摇头 (yaotou)</button>
+    </div>
+
+    <div class="button-group">
+        <h3>😊 表情测试 (Expressions)</h3>
+        <button onclick="testExpression('love_eyes')">爱心眼 (love_eyes)</button>
+        <button onclick="testExpression('angry')">生气 (angry)</button>
+        <button onclick="testExpression('star_eyes')">星星眼 (star_eyes)</button>
+        <button onclick="testExpression('crying')">哭哭 (crying)</button>
+        <button onclick="testExpression('microphone')">麦克风 (microphone)</button>
+        <button onclick="testExpression('coat')">外套 (coat)</button>
+        <button onclick="testExpression('tongue')">舌头 (tongue)</button>
+    </div>
+
+    <div class="button-group">
+        <h3>🎯 组合测试</h3>
+        <button onclick="testCombination('kaixin', 'love_eyes')">开心+爱心眼</button>
+        <button onclick="testCombination('talk', 'star_eyes')">说话+星星眼</button>
+        <button onclick="testCombination('jingya', 'tongue')">惊讶+舌头</button>
+        <button onclick="testCombination('wink', 'microphone')">眨眼+麦克风</button>
+    </div>
+
+    <div class="button-group">
+        <h3>🔄 当前映射测试</h3>
+        <button onclick="testCurrentEmotion('happy')">测试 happy</button>
+        <button onclick="testCurrentEmotion('funny')">测试 funny</button>
+        <button onclick="testCurrentEmotion('laughing')">测试 laughing</button>
+        <button onclick="testCurrentEmotion('loving')">测试 loving</button>
+        <button onclick="testCurrentEmotion('sad')">测试 sad</button>
+        <button onclick="testCurrentEmotion('angry')">测试 angry</button>
+        <button onclick="testCurrentEmotion('neutral')">测试 neutral</button>
+    </div>
+
+    <div class="button-group">
+        <h3>🧪 连续测试</h3>
+        <button onclick="runSequentialTest()">顺序测试所有动作</button>
+        <button onclick="runRandomTest()">随机测试 10 次</button>
+        <button onclick="clearLogs()">清空日志</button>
+    </div>
+
+    <div class="test-results">
+        <h3>📊 测试结果</h3>
+        <div id="testLogs"></div>
+    </div>
+
+    <script>
+        function log(message) {
+            const logDiv = document.getElementById('testLogs');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            console.log(message);
+        }
+
+        function testAction(actionName) {
+            log(`🎬 测试动作: ${actionName}`);
+
+            // 检查 Live2DAPI 是否可用
+            if (typeof Live2DAPI === 'undefined' || !Live2DAPI.action) {
+                log(`❌ Live2DAPI.action 不可用`);
+                return;
+            }
+
+            try {
+                if (typeof Live2DAPI.action[actionName] === 'function') {
+                    Live2DAPI.action[actionName]();
+                    log(`✅ 动作 ${actionName} 执行成功`);
+                } else {
+                    log(`❌ 动作 ${actionName} 不存在或不是函数`);
+                }
+            } catch (error) {
+                log(`❌ 动作 ${actionName} 执行失败: ${error.message}`);
+            }
+        }
+
+        function testExpression(expressionName) {
+            log(`😊 测试表情: ${expressionName}`);
+
+            if (typeof Live2DAPI === 'undefined' || !Live2DAPI.expression) {
+                log(`❌ Live2DAPI.expression 不可用`);
+                return;
+            }
+
+            try {
+                if (typeof Live2DAPI.expression[expressionName] === 'function') {
+                    Live2DAPI.expression[expressionName]();
+                    log(`✅ 表情 ${expressionName} 执行成功`);
+                } else {
+                    log(`❌ 表情 ${expressionName} 不存在或不是函数`);
+                }
+            } catch (error) {
+                log(`❌ 表情 ${expressionName} 执行失败: ${error.message}`);
+            }
+        }
+
+        function testCombination(actionName, expressionName) {
+            log(`🎯 测试组合: ${actionName} + ${expressionName}`);
+            testAction(actionName);
+            setTimeout(() => testExpression(expressionName), 500);
+        }
+
+        function testCurrentEmotion(emotion) {
+            log(`🔄 测试当前映射: ${emotion}`);
+
+            // 模拟当前的表情处理逻辑
+            if (emotion === 'happy') {
+                testAction('kaixin');
+            } else if (emotion === 'cool') {
+                testAction('wink');
+            } else if (emotion === 'sad') {
+                testExpression('crying');
+            } else if (emotion === 'angry') {
+                testAction('shengqi');
+            } else if (emotion === 'funny') {
+                testAction('kaixin');
+            } else if (emotion === 'laughing') {
+                testAction('kaixin');
+            } else if (emotion === 'loving') {
+                testAction('wink');
+            } else if (emotion === 'neutral') {
+                log(`🎭 中性表情，跳过动作`);
+            } else {
+                log(`🎭 未映射的表情: ${emotion}`);
+            }
+        }
+
+        function runSequentialTest() {
+            log(`🧪 开始顺序测试...`);
+            const actions = ['idle', 'talk', 'kaixin', 'jingya', 'shengqi', 'wink', 'yaotou'];
+            const expressions = ['love_eyes', 'angry', 'star_eyes', 'crying', 'microphone', 'coat', 'tongue'];
+
+            let index = 0;
+
+            function testNext() {
+                if (index < actions.length) {
+                    testAction(actions[index]);
+                    index++;
+                    setTimeout(testNext, 1500);
+                } else if (index - actions.length < expressions.length) {
+                    testExpression(expressions[index - actions.length]);
+                    index++;
+                    setTimeout(testNext, 1500);
+                } else {
+                    log(`🎉 顺序测试完成！`);
+                }
+            }
+
+            testNext();
+        }
+
+        function runRandomTest() {
+            log(`🎲 开始随机测试...`);
+            const allItems = [
+                {type: 'action', name: 'idle'},
+                {type: 'action', name: 'talk'},
+                {type: 'action', name: 'kaixin'},
+                {type: 'action', name: 'jingya'},
+                {type: 'action', name: 'shengqi'},
+                {type: 'action', name: 'wink'},
+                {type: 'action', name: 'yaotou'},
+                {type: 'expression', name: 'love_eyes'},
+                {type: 'expression', name: 'angry'},
+                {type: 'expression', name: 'star_eyes'},
+                {type: 'expression', name: 'crying'},
+                {type: 'expression', name: 'microphone'},
+                {type: 'expression', name: 'coat'},
+                {type: 'expression', name: 'tongue'}
+            ];
+
+            let count = 0;
+
+            function testRandom() {
+                if (count < 10) {
+                    const item = allItems[Math.floor(Math.random() * allItems.length)];
+                    if (item.type === 'action') {
+                        testAction(item.name);
+                    } else {
+                        testExpression(item.name);
+                    }
+                    count++;
+                    setTimeout(testRandom, 2000);
+                } else {
+                    log(`🎉 随机测试完成！`);
+                }
+            }
+
+            testRandom();
+        }
+
+        function clearLogs() {
+            document.getElementById('testLogs').innerHTML = '';
+            log(`🧹 日志已清空`);
+        }
+
+        // 页面加载时检查 Live2DAPI 状态
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                log(`🔍 检查 Live2DAPI 状态...`);
+                if (typeof Live2DAPI !== 'undefined') {
+                    log(`✅ Live2DAPI 已加载`);
+                    if (Live2DAPI.action) {
+                        const actions = Object.keys(Live2DAPI.action);
+                        log(`✅ 可用动作: ${actions.join(', ')}`);
+                    }
+                    if (Live2DAPI.expression) {
+                        const expressions = Object.keys(Live2DAPI.expression);
+                        log(`✅ 可用表情: ${expressions.join(', ')}`);
+                    }
+                } else {
+                    log(`❌ Live2DAPI 未加载，请在主页面中测试`);
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

@@ -84,15 +84,20 @@ class SimpleMessageHandler:
         def capture_emotion(emotion: str):
             print(f"😊 捕获情感: {emotion}")
 
-            # 放入情感专用队列，供emotion_controller获取
+            # 创建情感数据
             emotion_data = {
                 'type': 'emotion',
                 'emotion': emotion,
                 'timestamp': time.time()
             }
 
+            # 放入情感专用队列，供emotion_controller获取
             emotion_queue.put(emotion_data)
             print(f"✅ 情感已放入emotion_queue: {emotion}")
+
+            # 同时放入AI回复队列，供前端轮询获取
+            ai_reply_queue.put(emotion_data)
+            print(f"✅ 情感已放入ai_reply_queue: {emotion}")
 
         self.engine.on_tts = capture_ai_reply
         self.engine.on_audio_received = capture_audio_data
@@ -267,8 +272,14 @@ class SimpleMessageHandler:
                     'emotion': emotion,
                     'timestamp': time.time()
                 }
+
+                # 放入情感专用队列，供emotion_controller获取
                 emotion_queue.put(emotion_data)
                 print(f"✅ 情感已放入emotion_queue: {emotion}")
+
+                # 同时放入AI回复队列，供前端轮询获取
+                ai_reply_queue.put(emotion_data)
+                print(f"✅ 情感已放入ai_reply_queue: {emotion}")
 
             self.engine.on_audio_received = capture_audio_data
             self.engine.on_emotion = capture_emotion
