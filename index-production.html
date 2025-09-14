@@ -771,10 +771,11 @@
                 // 清空输入框
                 textInput.value = '';
                 
-                // 可以触发Live2D说话动作
-                if (window.Live2DAPI) {
-                    Live2DAPI.action.talk();
-                }
+                // 不再在用户发送消息时立即触发talk动作
+                // 由TTS状态信息和emotion_controller统一管理说话动作
+                // if (window.Live2DAPI) {
+                //     Live2DAPI.action.talk();
+                // }
                 
                 // 这里可以添加消息发送逻辑
                 processTextMessage(message);
@@ -807,10 +808,11 @@
                 const randomResponse = aiResponses[Math.floor(Math.random() * aiResponses.length)];
                 addChatMessage(randomResponse, 'ai');
                 
-                // 触发Live2D说话动作
-                if (window.Live2DAPI) {
-                    Live2DAPI.action.talk();
-                }
+                // 不再在AI回复时立即触发talk动作
+                // 由TTS状态信息和emotion_controller统一管理说话动作
+                // if (window.Live2DAPI) {
+                //     Live2DAPI.action.talk();
+                // }
             }, 1000 + Math.random() * 2000); // 1-3秒随机延迟
         }
 
@@ -2541,6 +2543,171 @@
                         timestamp: Date.now()
                     }
                 };
+            }
+        };
+
+        // ========== Python后端通信接口 ==========
+        
+        class Live2DAPIServer {
+            constructor() {
+                this.setupMessageListener();
+                this.setupHTTPEndpoint();
+                this.commandHistory = [];
+                this.maxHistorySize = 100;
+                
+                console.log('[Live2D API Server] 已启动，等待Python后端连接...');
+            }
+            
+            setupMessageListener() {
+                // 监听来自Python后端的postMessage
+                window.addEventListener('message', (event) => {
+                    this.handleMessage(event.data);
+                });
+                
+                // 监听自定义事件（用于跨窗口通信）
+                window.addEventListener('live2d-control', (event) => {
+                    this.handleMessage(event.detail);
+                });
+            }
+            
+            setupHTTPEndpoint() {
+                // 由于浏览器安全限制，我们无法创建真正的HTTP服务器
+                // 但我们可以通过轮询检查全局变量的方式来模拟HTTP接口
+                window.Live2DControlQueue = window.Live2DControlQueue || [];
+                
+                // 每100ms检查一次控制队列
+                setInterval(() => {
+                    if (window.Live2DControlQueue.length > 0) {
+                        const command = window.Live2DControlQueue.shift();
+                        this.handleMessage(command);
+                    }
+                }, 100);
+            }
+            
+            handleMessage(data) {
+                if (!data || typeof data !== 'object') {
+                    return;
+                }
+                
+                console.log('[Live2D API Server] 收到命令:', data);
+                
+                // 检查命令类型
+                if (data.type === 'live2d_control') {
+                    this.processLive2DCommand(data);
+                } else {
+                    console.warn('[Live2D API Server] 未知命令类型:', data.type);
+                }
+            }
+            
+            processLive2DCommand(command) {
+                let result = { success: false, message: '未知错误' };
+                
+                try {
+                    // 检查Live2D系统状态
+                    if (!window.Live2DAPI) {
+                        result = { success: false, message: 'Live2DAPI未初始化', error: 'API_NOT_READY' };
+                        this.logCommand(command, result);
+                        return;
+                    }
+                    
+                    // 处理动作命令
+                    if (command.action) {
+                        const actionResult = window.Live2DAPI.call('action', command.action);
+                        if (actionResult.success) {
+                            console.log(`[Live2D API Server] ✅ 执行动作: ${command.action}`);
+                        } else {
+                            console.error(`[Live2D API Server] ❌ 动作执行失败: ${command.action}`, actionResult);
+                        }
+                        result = actionResult;
+                    }
+                    
+                    // 处理表情命令  
+                    if (command.expression) {
+                        const expressionResult = window.Live2DAPI.call('expression', command.expression);
+                        if (expressionResult.success) {
+                            console.log(`[Live2D API Server] ✅ 执行表情: ${command.expression}`);
+                        } else {
+                            console.error(`[Live2D API Server] ❌ 表情执行失败: ${command.expression}`, expressionResult);
+                        }
+                        
+                        // 如果同时有动作和表情，合并结果
+                        if (command.action) {
+                            result.expressionResult = expressionResult;
+                        } else {
+                            result = expressionResult;
+                        }
+                    }
+                    
+                    // 记录成功的命令
+                    this.logCommand(command, result);
+                    
+                } catch (error) {
+                    result = { 
+                        success: false, 
+                        message: `命令执行异常: ${error.message}`,
+                        error: 'EXECUTION_EXCEPTION'
+                    };
+                    console.error('[Live2D API Server] 命令执行异常:', error);
+                    this.logCommand(command, result);
+                }
+            }
+            
+            logCommand(command, result) {
+                const logEntry = {
+                    timestamp: new Date().toISOString(),
+                    command: command,
+                    result: result,
+                    success: result.success
+                };
+                
+                this.commandHistory.push(logEntry);
+                
+                // 保持历史记录大小限制
+                if (this.commandHistory.length > this.maxHistorySize) {
+                    this.commandHistory.shift();
+                }
+            }
+            
+            getCommandHistory() {
+                return this.commandHistory;
+            }
+            
+            getStats() {
+                const total = this.commandHistory.length;
+                const successful = this.commandHistory.filter(entry => entry.success).length;
+                const failed = total - successful;
+                
+                return {
+                    total_commands: total,
+                    successful_commands: successful,
+                    failed_commands: failed,
+                    success_rate: total > 0 ? (successful / total * 100).toFixed(2) + '%' : '0%'
+                };
+            }
+        }
+        
+        // 启动Live2D API服务器
+        let live2dAPIServer;
+        
+        // 等待页面加载完成后启动API服务器
+        document.addEventListener('DOMContentLoaded', () => {
+            live2dAPIServer = new Live2DAPIServer();
+            
+            // 将API服务器暴露到全局作用域供调试使用
+            window.Live2DAPIServer = live2dAPIServer;
+        });
+        
+        // 为Python后端提供的便捷接口
+        window.sendLive2DCommand = function(command) {
+            if (live2dAPIServer) {
+                live2dAPIServer.handleMessage({
+                    type: 'live2d_control',
+                    ...command
+                });
+                return true;
+            } else {
+                console.error('[Live2D] API服务器未初始化');
+                return false;
             }
         };
 

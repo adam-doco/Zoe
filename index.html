@@ -3,1335 +3,3249 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live2D Model Viewer</title>
+    <title>小智Live2D - 生产环境</title>
     <style>
-        body {
+        /* 基础样式 */
+        * {
             margin: 0;
             padding: 0;
-            background-color: #0b1c21;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
             overflow: hidden;
-            position: relative;
         }
 
-        #canvas {
-            display: block;
-            width: 100vw;
-            height: 100vh;
-            border: 2px solid #12b886; /* 临时边框，用于调试定位 */
-        }
-
-        #controls {
-            position: fixed;
-            top: 50px;
-            left: 20px;
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            max-width: 300px;
-        }
-
-        .control-group {
-            background: rgba(11, 28, 33, 0.9);
-            border: 1px solid #12b886;
-            border-radius: 8px;
-            padding: 10px;
-        }
-
-        .control-group h3 {
-            margin: 0 0 10px 0;
-            color: #12b886;
-            font-size: 14px;
-            font-weight: bold;
-        }
-
-        .button-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-
-        .control-btn {
-            background-color: #12b886;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: background-color 0.2s;
-        }
-
-        .control-btn:hover {
-            background-color: #0ca26e;
-        }
-
-        .control-btn:active {
-            background-color: #099268;
-        }
-
-        #error-bar {
-            position: fixed;
+        /* Live2D canvas */
+        #live2d-canvas {
+            position: absolute;
             top: 0;
             left: 0;
-            right: 0;
-            background-color: #dc3545;
-            color: white;
-            padding: 12px 20px;
-            text-align: center;
-            z-index: 2000;
-            display: none;
-            font-size: 14px;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
         }
 
-        #loading-status {
+        /* 控制面板 */
+        .controls {
             position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(11, 28, 33, 0.9);
-            color: #12b886;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
             padding: 20px;
-            border-radius: 8px;
-            border: 1px solid #12b886;
-            text-align: center;
-            z-index: 1500;
-            font-size: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            max-width: 300px;
+            transition: transform 0.3s ease, opacity 0.3s ease;
         }
-
-        #voice-controls {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1000;
-            display: flex;
-            gap: 15px;
-            align-items: center;
-            background: rgba(11, 28, 33, 0.9);
-            border: 1px solid #12b886;
-            border-radius: 12px;
-            padding: 15px 25px;
+        
+        /* 折叠状态 */
+        .controls.collapsed {
+            transform: translateX(100%);
+            opacity: 0;
         }
-
-        #voice-btn {
-            width: 60px;
-            height: 60px;
+        
+        /* 折叠按钮 */
+        .collapse-btn {
+            position: absolute;
+            left: -50px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.95);
+            border: none;
             border-radius: 50%;
-            border: 2px solid #12b886;
-            background: transparent;
-            color: #12b886;
-            font-size: 24px;
             cursor: pointer;
-            transition: all 0.3s ease;
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 20px;
+            color: #333;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            z-index: 101;
+        }
+        
+        .collapse-btn:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: translateY(-50%) scale(1.1);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        }
+        
+        .collapse-btn .arrow {
+            transition: transform 0.3s ease;
+        }
+        
+        .controls.collapsed .collapse-btn .arrow {
+            transform: rotate(180deg);
+        }
+
+        /* 固定召唤按钮 - 当菜单折叠时显示 */
+        .summon-btn {
+            position: fixed;
+            top: 50%;
+            right: 10px;
+            transform: translateY(-50%);
+            width: 45px;
+            height: 45px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 102;
+        }
+        
+        .summon-btn:hover {
+            transform: translateY(-50%) scale(1.1);
+            box-shadow: 0 6px 25px rgba(102, 126, 234, 0.5);
+        }
+        
+        /* 当菜单折叠时显示召唤按钮 */
+        .controls.collapsed + .summon-btn {
+            display: flex;
+        }
+        
+        /* 备用：通过JavaScript类控制 */
+        .summon-btn.show {
+            display: flex;
+        }
+
+        /* 底部输入区域 */
+        .input-area {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            align-items: stretch;
+            background: rgba(255, 255, 255, 0.98);
+            border-radius: 25px;
+            padding: 5px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            min-width: 400px;
+            max-width: 550px;
+            height: 50px;
+        }
+
+        /* 左侧语音按钮容器 */
+        .voice-section {
+            display: flex;
+            align-items: center;
+            padding: 0 5px;
+        }
+
+        /* 语音按钮 */
+        .voice-input-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #00d4aa, #00c4a7);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 10px rgba(0, 212, 170, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .voice-input-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0));
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .voice-input-btn:hover::before {
+            opacity: 1;
+        }
+
+        .voice-input-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 20px rgba(0, 212, 170, 0.4);
+        }
+
+        .voice-input-btn.recording {
+            background: linear-gradient(135deg, #ff4757, #ff3838);
+            animation: recordingPulse 1.5s ease-in-out infinite;
+            box-shadow: 0 4px 20px rgba(255, 71, 87, 0.5);
+        }
+
+        /* 文字输入区域 */
+        .text-section {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+
+        .text-input {
+            width: 100%;
+            border: none;
+            outline: none;
+            background: transparent;
+            font-size: 15px;
+            padding: 12px 15px;
+            color: #2c3e50;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-weight: 400;
+        }
+
+        .text-input::placeholder {
+            color: #95a5a6;
+            font-weight: 300;
+        }
+
+        /* 发送按钮 */
+        .send-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+            margin-right: 5px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .send-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0));
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .send-btn:hover::before {
+            opacity: 1;
+        }
+
+        .send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .send-btn:disabled {
+            background: linear-gradient(135deg, #bdc3c7, #95a5a6);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 待机状态显示 */
+        .standby-status {
+            position: fixed;
+            bottom: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            text-align: center;
+        }
+
+        .status-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .status-icon {
+            font-size: 12px;
+        }
+
+        .status-text {
+            font-size: 12px;
+            color: #FF9800;
+            font-weight: 400;
+        }
+
+        .activate-btn {
+            background: none;
+            border: none;
+            color: #4CAF50;
+            font-size: 12px;
+            cursor: pointer;
+            text-decoration: underline;
+            transition: color 0.2s ease;
+            font-weight: 400;
+            margin-left: 8px;
+            padding: 0;
+        }
+
+        .activate-btn:hover {
+            color: #66BB6A;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* 录音动画 */
+        @keyframes recordingPulse {
+            0%, 100% { 
+                transform: scale(1);
+                box-shadow: 0 4px 20px rgba(255, 71, 87, 0.5);
+            }
+            50% { 
+                transform: scale(1.05);
+                box-shadow: 0 6px 25px rgba(255, 71, 87, 0.7);
+            }
+        }
+
+        /* 聊天显示区域 */
+        .chat-area {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 75%;
+            max-width: 450px; /* 进一步缩小宽度 */
+            height: 220px; /* 降低高度 */
+            z-index: 90;
+            display: flex;
+            flex-direction: column;
+            pointer-events: none; /* 让点击穿透，不阻挡Live2D模型交互 */
+        }
+
+        /* 聊天消息容器 */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px; /* 大幅减少间距 */
+            pointer-events: auto; /* 消息区域可以交互 */
+        }
+
+        /* 隐藏滚动条但保持滚动功能 */
+        .chat-messages::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        /* 消息气泡 */
+        .message {
+            display: flex;
+            align-items: flex-end;
+            margin-bottom: 2px; /* 减少底部边距 */
+            animation: messageSlideIn 0.3s ease-out;
+        }
+
+        /* 用户消息 (右侧) */
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.user .bubble {
+            background: linear-gradient(135deg, rgba(0, 212, 170, 0.85), rgba(0, 196, 167, 0.85));
+            color: white;
+            margin-left: 40px; /* 减少左边距 */
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* AI消息 (左侧) */
+        .message.ai {
+            justify-content: flex-start;
+        }
+
+        .message.ai .bubble {
+            background: rgba(255, 255, 255, 0.75);
+            color: #2c3e50;
+            margin-right: 40px; /* 减少右边距 */
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* 消息气泡内容 */
+        .bubble {
+            max-width: 280px; /* 调整适合新宽度 */
+            padding: 8px 12px; /* 减少内边距 */
+            border-radius: 16px; /* 稍微调小圆角 */
+            font-size: 14px;
+            line-height: 1.3; /* 减少行高 */
+            word-wrap: break-word;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+            position: relative;
+        }
+
+        /* 用户消息气泡尾巴 */
+        .message.user .bubble::after {
+            content: '';
+            position: absolute;
+            right: -6px;
+            bottom: 8px;
+            width: 0;
+            height: 0;
+            border-left: 8px solid rgba(0, 196, 167, 0.85);
+            border-top: 6px solid transparent;
+            border-bottom: 6px solid transparent;
+        }
+
+        /* AI消息气泡尾巴 */
+        .message.ai .bubble::after {
+            content: '';
+            position: absolute;
+            left: -6px;
+            bottom: 8px;
+            width: 0;
+            height: 0;
+            border-right: 8px solid rgba(255, 255, 255, 0.75);
+            border-top: 6px solid transparent;
+            border-bottom: 6px solid transparent;
+        }
+
+        /* 消息进入动画 */
+        @keyframes messageSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* 正在输入指示器 */
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            margin-bottom: 4px; /* 减少底部边距 */
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .typing-indicator.show {
+            opacity: 1;
+        }
+
+        .typing-indicator .bubble {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 16px; /* 减少内边距 */
+            margin-right: 40px; /* 减少右边距 */
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-dots span {
+            width: 6px;
+            height: 6px;
+            background: #95a5a6;
+            border-radius: 50%;
+            animation: typingDots 1.4s ease-in-out infinite;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typingDots {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.4;
+            }
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+        }
+
+        /* 脉冲动画 */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-group h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* 按钮样式 */
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn.small {
+            padding: 8px 12px;
+            font-size: 11px;
+        }
+
+        /* 语音按钮特殊样式 */
+        #voice-btn {
+            background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
+            font-size: 14px;
+            padding: 15px 25px;
+            width: 100%;
+            margin: 10px 0;
+            position: relative;
+            overflow: hidden;
         }
 
         #voice-btn:hover {
-            background: rgba(18, 184, 134, 0.1);
-            transform: scale(1.05);
+            background: linear-gradient(45deg, #ff5252, #ff7979);
         }
 
         #voice-btn.recording {
-            background: #dc3545;
-            border-color: #dc3545;
-            color: white;
+            background: linear-gradient(45deg, #ff1744, #f50057);
             animation: pulse 1.5s infinite;
         }
 
         #voice-btn.connecting {
-            background: #ffc107;
-            border-color: #ffc107;
-            color: #000;
+            background: linear-gradient(45deg, #ffa726, #ffb74d);
+            animation: connecting 2s infinite;
         }
 
         @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.1); opacity: 0.7; }
-            100% { transform: scale(1); opacity: 1; }
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
         }
 
-        #voice-status {
-            color: #12b886;
-            font-size: 14px;
-            min-width: 120px;
+        @keyframes connecting {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
         }
 
-        #interrupt-btn {
-            background: #dc3545;
-            color: white;
-            border: none;
-            padding: 10px 15px;
-            border-radius: 6px;
-            cursor: pointer;
+        /* 状态显示 */
+        .status {
+            background: rgba(0, 0, 0, 0.05);
+            padding: 10px;
+            border-radius: 10px;
             font-size: 12px;
-            transition: background-color 0.2s;
+            color: #666;
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .status.connected {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+        }
+
+        .status.error {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+        }
+
+        /* 中断按钮 */
+        #interrupt-btn {
+            background: linear-gradient(45deg, #f44336, #ef5350);
+            width: 100%;
+            margin-top: 10px;
         }
 
         #interrupt-btn:hover {
-            background: #c82333;
+            background: linear-gradient(45deg, #d32f2f, #f44336);
         }
 
         #interrupt-btn:disabled {
-            background: #666;
+            background: #ccc;
             cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
 
-        .loading-spinner {
-            border: 2px solid #12b886;
-            border-top: 2px solid transparent;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-            margin-right: 10px;
+        /* 错误信息 */
+        .error-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #f44336;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            transform: translateY(-100%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
         }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .error-bar.show {
+            transform: translateY(0);
+        }
+
+        /* 滚动条美化 */
+        .controls::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .controls::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 3px;
+        }
+
+        .controls::-webkit-scrollbar-thumb {
+            background: rgba(102, 126, 234, 0.5);
+            border-radius: 3px;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .controls {
+                top: 10px;
+                right: 10px;
+                left: 10px;
+                max-width: none;
+                padding: 15px;
+            }
         }
     </style>
 </head>
 <body>
-    <div id="error-bar"></div>
+    <canvas id="live2d-canvas"></canvas>
     
-    <div id="loading-status">
-        <div class="loading-spinner"></div>
-        正在初始化 Live2D 应用...
-    </div>
+    <!-- 错误提示条 -->
+    <div id="error-bar" class="error-bar"></div>
     
-    <canvas id="canvas"></canvas>
-    
-    <div id="controls">
+    <!-- 控制面板 -->
+    <div class="controls collapsed" id="controls-panel">
+        <!-- 折叠按钮 -->
+        <button class="collapse-btn" id="collapse-btn" onclick="toggleControlPanel()">
+            <span class="arrow">◀</span>
+        </button>
+        <!-- 语音控制 -->
         <div class="control-group">
-            <h3>Motions</h3>
-            <div id="motion-buttons" class="button-container"></div>
+            <h3>🎤 语音对话</h3>
+            <div id="voice-status" class="status">点击连接小智</div>
+            <button id="voice-btn" class="btn">连接小智AI</button>
+            <button id="interrupt-btn" class="btn" disabled>中断对话</button>
         </div>
-        
+
+        <!-- 状态控制 -->
         <div class="control-group">
-            <h3>Expressions</h3>
-            <div id="expression-buttons" class="button-container"></div>
+            <h3>💃 状态控制</h3>
+            <div id="motions-container">
+                <!-- 状态按钮将在这里动态生成 -->
+            </div>
+        </div>
+
+        <!-- 表情控制 -->
+        <div class="control-group">
+            <h3>😊 表情控制</h3>
+            <div id="expressions-container">
+                <!-- 表情按钮将在这里动态生成 -->
+            </div>
+        </div>
+
+        <!-- 动作播放器 -->
+        <div class="control-group">
+            <h3>🎭 动作播放器</h3>
+            <button class="btn" onclick="openMotionPlayer()">打开动作播放器</button>
+        </div>
+
+        <!-- 系统信息 -->
+        <div class="control-group">
+            <h3>📊 系统状态</h3>
+            <div style="font-size: 11px; color: #666; line-height: 1.4;">
+                <div>环境: 生产环境</div>
+                <div>版本: v2.0.0</div>
+                <div id="device-info">设备: 正在获取...</div>
+            </div>
         </div>
     </div>
 
-    <div id="voice-controls">
-        <button id="voice-btn" title="长按说话">🎤</button>
-        <div id="voice-status">点击连接</div>
-        <button id="interrupt-btn" disabled>打断</button>
-    </div>
-
-    <!-- 脚本将动态加载以确保正确顺序 -->
-
+    <!-- 核心脚本 -->
     <script>
-        // 动态脚本加载器
-        class ScriptLoader {
-            static loadScript(src, id = null, timeout = 30000) {
-                return new Promise((resolve, reject) => {
-                    console.log(`📥 开始加载脚本: ${src}`);
+        // ========== 折叠控制函数 ==========
+        function toggleControlPanel() {
+            const panel = document.getElementById('controls-panel');
+            const summonBtn = document.getElementById('summon-btn');
+            
+            panel.classList.toggle('collapsed');
+            
+            // 控制召唤按钮的显示/隐藏
+            if (panel.classList.contains('collapsed')) {
+                summonBtn.classList.add('show');
+            } else {
+                summonBtn.classList.remove('show');
+            }
+        }
+
+        // ========== 底部输入区域控制 ==========
+        let isRecording = false;
+        
+        function toggleVoiceInput() {
+            const voiceBtn = document.getElementById('voice-input-btn');
+            
+            if (!isRecording) {
+                // 开始录音
+                startVoiceRecording();
+            } else {
+                // 停止录音
+                stopVoiceRecording();
+            }
+        }
+        
+        function startVoiceRecording() {
+            const voiceBtn = document.getElementById('voice-input-btn');
+            const micIcon = document.getElementById('mic-icon');
+            const recordingIcon = document.getElementById('recording-icon');
+            
+            voiceBtn.classList.add('recording');
+            micIcon.style.display = 'none';
+            recordingIcon.style.display = 'block';
+            voiceBtn.title = '点击停止录音';
+            isRecording = true;
+            
+            // 这里可以集成语音识别功能
+            console.log('🎙️ 开始语音录音...');
+            
+            // 模拟录音过程 - 实际项目中替换为真实的语音识别
+            // 可以集成Web Speech API或者连接到语音服务
+        }
+        
+        function stopVoiceRecording() {
+            const voiceBtn = document.getElementById('voice-input-btn');
+            const micIcon = document.getElementById('mic-icon');
+            const recordingIcon = document.getElementById('recording-icon');
+            
+            voiceBtn.classList.remove('recording');
+            micIcon.style.display = 'block';
+            recordingIcon.style.display = 'none';
+            voiceBtn.title = '点击开始语音输入';
+            isRecording = false;
+            
+            console.log('⏹️ 停止语音录音...');
+            
+            // 这里处理录音结果
+            // 可以发送到语音识别服务或直接处理
+        }
+        
+        function handleTextInput(event) {
+            if (event.key === 'Enter') {
+                sendTextMessage();
+            }
+        }
+        
+        function sendTextMessage() {
+            const textInput = document.getElementById('text-input');
+            const message = textInput.value.trim();
+            
+            if (message) {
+                console.log('发送文字消息:', message);
+                
+                // 这里可以集成到现有的AI对话系统
+                // 例如连接到小智AI或其他聊天机器人
+                
+                // 清空输入框
+                textInput.value = '';
+                
+                // 发送消息时不触发说话动作，等AI回复时再触发
+                
+                // 这里可以添加消息发送逻辑
+                processTextMessage(message);
+            }
+        }
+        
+        function processTextMessage(message) {
+            // 处理文字消息的函数
+            console.log('处理消息:', message);
+            
+            // 添加用户消息到聊天区域
+            addChatMessage(message, 'user');
+            
+            // 显示正在输入指示器
+            showTypingIndicator();
+            
+            // 发送消息到后端Live2D + 小智AI系统
+            sendMessageToBackend(message);
+        }
+        
+        async function sendMessageToBackend(message) {
+            try {
+                console.log('🚀 发送消息到后端:', message);
+                
+                // 发送到后端的聊天API
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        type: 'user_message',
+                        text: message,
+                        sender: 'user',
+                        timestamp: Date.now()
+                    })
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('✅ 消息已发送到后端:', result);
                     
+                    // 立即开始轮询AI回复
+                    startPollingForReply();
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+            } catch (error) {
+                console.error('❌ 发送消息到后端失败:', error);
+                hideTypingIndicator();
+                addChatMessage('抱歉，连接到小智AI时出现了问题，请检查网络连接。', 'ai');
+            }
+        }
+        
+        // 处理来自后端的AI回复
+        function handleAIResponse(aiMessage) {
+            console.log('🤖 收到小智AI回复:', aiMessage);
+            hideTypingIndicator();
+            addChatMessage(aiMessage, 'ai');
+            
+            // 处理消息时不触发说话动作，等AI回复时再触发
+        }
+        
+        // 轮询AI回复
+        let isPolling = false;
+        
+        function startPollingForReply() {
+            if (isPolling) return;
+            
+            isPolling = true;
+            let emptyResponseCount = 0;
+            const maxEmptyResponses = 5; // 连续5次没有回复则停止
+            console.log('🔄 开始轮询AI回复...');
+            
+            const poll = async () => {
+                try {
+                    const response = await fetch('/api/poll_reply');
+                    if (response.ok) {
+                        const result = await response.json();
+                        
+                        if (result.has_reply) {
+                            const reply = result.reply;
+                            console.log('✅ 收到轮询回复:', reply);
+                            
+                            // 处理不同类型的回复
+                            if (reply.type === 'ai_reply') {
+                                // 文本回复
+                                hideTypingIndicator();
+                                addChatMessage(reply.text, 'ai');
+                                
+                                // 触发Live2D动作
+                                if (window.Live2DAPI) {
+                                    const emotion = reply.emotion || 'neutral';
+                                    // 为AI回复触发一次说话动作（避免重复）
+                                    if (!window.lastTalkTime || Date.now() - window.lastTalkTime > 2000) {
+                                        Live2DAPI.action.talk();
+                                        window.lastTalkTime = Date.now();
+                                    }
+                                }
+                            } else if (reply.type === 'tts_status') {
+                                // TTS状态信息，用于Live2D嘴部同步
+                                console.log('🗣️ TTS状态:', reply.state);
+                                
+                                // TTS状态处理 - 不在这里触发说话动作
+                            } else if (reply.type === 'standby_status') {
+                                // 待机状态通知
+                                console.log('💤 收到待机状态通知:', reply.is_standby);
+                                handleStandbyStatus(reply.is_standby, reply.message);
+                            } else if (reply.type === 'emotion') {
+                                // 情感信息，用于Live2D表情控制
+                                console.log('😊 收到情感:', reply.emotion);
+
+                                if (window.Live2DAPI) {
+                                    // 触发对应的表情动作
+                                    const emotion = reply.emotion;
+                                    if (emotion === 'happy') {
+                                        Live2DAPI.action.kaixin();
+                                    } else if (emotion === 'cool') {
+                                        Live2DAPI.action.wink();
+                                    } else if (emotion === 'sad') {
+                                        Live2DAPI.expression.crying();
+                                    } else if (emotion === 'angry') {
+                                        Live2DAPI.action.shengqi();
+                                    }
+                                    
+                                    // 情感动作不触发额外的说话动作
+                                }
+                            }
+                            
+                            // 重置空回复计数，继续轮询获取可能的多条回复
+                            emptyResponseCount = 0;
+                        } else {
+                            // 没有回复，增加空回复计数
+                            emptyResponseCount++;
+                            console.log(`📭 暂无回复 (${emptyResponseCount}/${maxEmptyResponses})`);
+                            
+                            // 连续多次没有回复，停止轮询
+                            if (emptyResponseCount >= maxEmptyResponses) {
+                                isPolling = false;
+                                hideTypingIndicator();
+                                console.log('✅ AI回复完成，停止轮询');
+                                return;
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ 轮询回复错误:', error);
+                }
+                
+                // 如果还在等待回复，继续轮询
+                if (isPolling) {
+                    setTimeout(poll, 1000); // 1秒后再次轮询
+                }
+            };
+            
+            // 开始轮询，1秒后第一次轮询
+            setTimeout(poll, 1000);
+            
+            // 30秒后强制停止轮询
+            setTimeout(() => {
+                if (isPolling) {
+                    isPolling = false;
+                    hideTypingIndicator();
+                    // 删除超时提示消息
+                    console.log('⏰ 轮询超时，已停止');
+                }
+            }, 30000);
+        }
+
+        // ========== 聊天界面功能 ==========
+        
+        function addChatMessage(text, sender) {
+            const chatMessages = document.getElementById('chat-messages');
+            
+            // 创建消息元素
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'bubble';
+            bubbleDiv.textContent = text;
+            
+            messageDiv.appendChild(bubbleDiv);
+            chatMessages.appendChild(messageDiv);
+            
+            // 自动滚动到底部
+            scrollToBottom();
+        }
+        
+        function showTypingIndicator() {
+            const indicator = document.getElementById('typing-indicator');
+            indicator.classList.add('show');
+            scrollToBottom();
+        }
+        
+        function hideTypingIndicator() {
+            const indicator = document.getElementById('typing-indicator');
+            indicator.classList.remove('show');
+        }
+        
+        function scrollToBottom() {
+            const chatMessages = document.getElementById('chat-messages');
+            setTimeout(() => {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }, 100);
+        }
+        
+        // 添加一些示例消息用于演示
+        function addDemoMessages() {
+            setTimeout(() => {
+                addChatMessage("你好！", "user");
+            }, 1000);
+            
+            setTimeout(() => {
+                showTypingIndicator();
+                setTimeout(() => {
+                    hideTypingIndicator();
+                    addChatMessage("你好！很高兴认识你！有什么我可以帮助你的吗？", "ai");
+                    if (window.Live2DAPI) {
+                        Live2DAPI.action.kaixin(); // 播放开心动作
+                    }
+                }, 1500);
+            }, 2000);
+        }
+
+        // ========== 待机状态管理 ==========
+
+        // 处理待机状态显示/隐藏
+        function handleStandbyStatus(isStandby, message) {
+            const standbyStatus = document.getElementById('standby-status');
+            const statusText = standbyStatus.querySelector('.status-text');
+
+            if (isStandby) {
+                console.log('💤 系统进入待机状态:', message);
+                statusText.textContent = '状态：待机中';
+                standbyStatus.style.display = 'block';
+
+                // 添加进入待机状态的消息到聊天区域
+                if (message) {
+                    addChatMessage(message, 'system');
+                }
+            } else {
+                console.log('✅ 系统已激活:', message);
+                standbyStatus.style.display = 'none';
+
+                // 添加激活成功消息到聊天区域
+                if (message) {
+                    addChatMessage(message, 'system');
+                }
+            }
+        }
+
+        // 激活系统函数
+        async function activateSystem() {
+            const activateBtn = document.getElementById('activate-btn');
+            const originalText = activateBtn.textContent;
+
+            try {
+                // 禁用按钮并显示加载状态
+                activateBtn.disabled = true;
+                activateBtn.textContent = '激活中...';
+
+                console.log('🔄 发送激活请求...');
+
+                const response = await fetch('/api/activate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('✅ 激活请求结果:', result);
+
+                    if (result.status === 'success') {
+                        // 激活成功，立即检查状态更新
+                        console.log('🎉 系统激活成功');
+                    } else {
+                        console.error('❌ 激活失败:', result.message);
+                        addChatMessage('激活失败：' + result.message, 'system');
+                    }
+                } else {
+                    console.error('❌ 激活请求失败:', response.status);
+                    addChatMessage('激活请求失败，请稍后重试', 'system');
+                }
+
+            } catch (error) {
+                console.error('❌ 激活过程中出现错误:', error);
+                addChatMessage('激活过程中出现错误，请稍后重试', 'system');
+            } finally {
+                // 恢复按钮状态
+                activateBtn.disabled = false;
+                activateBtn.textContent = originalText;
+            }
+        }
+
+        // 添加系统消息到聊天区域
+        function addSystemMessage(message) {
+            const chatMessages = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message system';
+            messageDiv.innerHTML = `
+                <div class="message-content system">
+                    <div class="message-text">${message}</div>
+                    <div class="message-time">${new Date().toLocaleTimeString()}</div>
+                </div>
+            `;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // ========== 全局配置 ==========
+        const XIAOZHI_CONFIG = {
+            // 生产环境配置
+            websocketUrl: 'wss://api.tenclass.net/xiaozhi/v1/',
+            otaUrl: 'https://api.tenclass.net/xiaozhi/ota/',
+            
+            // 设备信息 (已激活的设备)
+            deviceId: 'b3:66:fa:cc:95:b9',
+            clientId: 'c5d17de5-277a-47d9-8a7b-137300ea0fbc',
+            serialNumber: 'SN-07BB9BEF-b366facc95b9',
+            hmacKey: '431c400f98c949da553dff65800effa5183d2f5def9db9698bbcd40b9d751df2',
+            
+            // 音频配置
+            audio: {
+                sampleRate: 16000,
+                channels: 1,
+                frameSize: 960
+            }
+        };
+
+        // ========== Live2D管理器 ==========
+        class Live2DManager {
+            constructor() {
+                this.app = null;
+                this.model = null;
+                this.canvas = document.getElementById('live2d-canvas');
+                this.isLoaded = false;
+                this.idleReturnTimer = null; // 自动回归待机的定时器
+                this.initialStateSnapshot = null; // 初始状态快照
+            }
+
+            async init() {
+                try {
+                    await this.loadScripts();
+                    await this.initPixiApp();
+                    await this.loadModel();
+                    this.setupControls();
+                    console.log('✓ Live2D初始化完成');
+                    this.isLoaded = true;
+                } catch (error) {
+                    console.error('Live2D初始化失败:', error);
+                    showError('Live2D加载失败: ' + error.message);
+                }
+            }
+
+            async loadScripts() {
+                const scripts = [
+                    'https://unpkg.com/pixi.js@7.3.2/dist/pixi.min.js',
+                    'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js'
+                ];
+
+                for (const src of scripts) {
+                    await this.loadScript(src);
+                }
+
+                // 设置PIXI全局变量
+                window.PIXI = PIXI;
+                
+                // 加载Live2D显示库
+                await this.loadScript('https://unpkg.com/pixi-live2d-display@0.4.0/dist/cubism4.min.js');
+            }
+
+            loadScript(src) {
+                return new Promise((resolve, reject) => {
                     const script = document.createElement('script');
                     script.src = src;
-                    script.async = true;
-                    if (id) script.id = id;
-                    
-                    let timeoutId = setTimeout(() => {
-                        reject(new Error(`脚本加载超时: ${src}`));
-                    }, timeout);
-                    
-                    script.onload = () => {
-                        clearTimeout(timeoutId);
-                        console.log(`✓ 脚本加载成功: ${src}`);
-                        resolve();
-                    };
-                    
-                    script.onerror = (error) => {
-                        clearTimeout(timeoutId);
-                        console.error(`✗ 脚本加载失败: ${src}`, error);
-                        reject(new Error(`脚本加载失败: ${src}`));
-                    };
-                    
+                    script.onload = resolve;
+                    script.onerror = () => reject(new Error(`脚本加载失败: ${src}`));
                     document.head.appendChild(script);
                 });
             }
 
-            static async loadScriptsSequentially() {
-                try {
-                    // 步骤 1: 加载 Live2D Cubism Core
-                    console.log('🚀 步骤 1: 加载 Live2D Cubism Core...');
-                    await this.loadScript('libs/live2dcubismcore.min.js', 'cubism-core');
-                    
-                    // 验证 Cubism Core 加载
-                    if (typeof Live2DCubismCore === 'undefined') {
-                        throw new Error('Live2DCubismCore 未正确加载');
-                    }
-                    console.log('✓ Live2DCubismCore 加载成功');
-                    
-                    // 步骤 2: 加载 PIXI.js
-                    console.log('🚀 步骤 2: 加载 PIXI.js...');
-                    await this.loadScript('https://unpkg.com/pixi.js@7/dist/pixi.min.js', 'pixi');
-                    
-                    // 验证 PIXI 加载并设置全局变量
-                    if (typeof PIXI === 'undefined') {
-                        throw new Error('PIXI 未正确加载');
-                    }
-                    window.PIXI = PIXI; // 立即设置全局变量
-                    console.log('✓ PIXI 加载成功并设置全局变量');
-                    
-                    // 步骤 3: 加载 pixi-live2d-display (多层降级策略)
-                    console.log('🚀 步骤 3: 加载 pixi-live2d-display...');
-                    await this.loadLive2DDisplay();
-                    
-                    console.log('🎉 所有脚本加载完成！');
-                    return true;
-                    
-                } catch (error) {
-                    console.error('❌ 脚本加载失败:', error);
-                    throw error;
-                }
-            }
+            async initPixiApp() {
+                this.app = new PIXI.Application({
+                    view: this.canvas,
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    backgroundColor: 0x000000,
+                    backgroundAlpha: 0,
+                    antialias: true,
+                    resolution: window.devicePixelRatio || 1,
+                    autoDensity: true
+                });
 
-            static async loadLive2DDisplay() {
-                const strategies = [
-                    {
-                        name: '0.4.0 Cubism4专用版本',
-                        url: 'https://unpkg.com/pixi-live2d-display@0.4.0/dist/cubism4.min.js',
-                        id: 'live2d-cubism4'
-                    },
-                    {
-                        name: '0.4.0 完整版本（降级）',
-                        url: 'https://unpkg.com/pixi-live2d-display@0.4.0/dist/index.min.js',
-                        id: 'live2d-index'
-                    },
-                    {
-                        name: '0.5.0-beta Cubism4版本',
-                        url: 'https://unpkg.com/pixi-live2d-display@0.5.0-beta/dist/cubism4.min.js',
-                        id: 'live2d-beta-cubism4'
-                    },
-                    {
-                        name: '0.5.0-beta 完整版本',
-                        url: 'https://unpkg.com/pixi-live2d-display@0.5.0-beta/dist/index.min.js',
-                        id: 'live2d-beta-index'
-                    }
-                ];
-
-                for (let i = 0; i < strategies.length; i++) {
-                    const strategy = strategies[i];
-                    console.log(`📦 尝试策略 ${i + 1}: ${strategy.name}`);
-                    
-                    try {
-                        await this.loadScript(strategy.url, strategy.id);
-                        
-                        // 等待插件初始化
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                        
-                        // 验证加载成功
-                        if (window.PIXI.live2d && window.PIXI.live2d.Live2DModel) {
-                            console.log(`✓ ${strategy.name} 加载成功！`);
-                            return;
-                        } else {
-                            throw new Error('插件未正确初始化');
-                        }
-                        
-                    } catch (error) {
-                        console.warn(`❌ 策略 ${i + 1} 失败: ${error.message}`);
-                        
-                        // 清理失败的脚本
-                        const script = document.getElementById(strategy.id);
-                        if (script) script.remove();
-                        
-                        // 如果是最后一个策略，抛出错误
-                        if (i === strategies.length - 1) {
-                            throw new Error('所有加载策略都失败了');
-                        }
-                        
-                        console.log(`🔄 尝试下一个策略...`);
-                    }
-                }
-            }
-
-            static async loadWithFallback() {
-                try {
-                    // 首次尝试 unpkg CDN
-                    console.log('🌐 尝试主CDN (unpkg)...');
-                    await this.loadScriptsSequentially();
-                } catch (error) {
-                    console.warn('🔄 主CDN失败，尝试备用CDN (jsDelivr)...');
-                    
-                    try {
-                        // 清理已加载的脚本
-                        const scriptIds = ['cubism-core', 'pixi', 'live2d-cubism4', 'live2d-index', 
-                                         'live2d-beta-cubism4', 'live2d-beta-index'];
-                        scriptIds.forEach(id => {
-                            const script = document.getElementById(id);
-                            if (script) script.remove();
-                        });
-                        
-                        // 重新加载，使用 jsDelivr CDN
-                        console.log('🚀 步骤 1 (jsDelivr): 加载 Live2D Cubism Core...');
-                        await this.loadScript('libs/live2dcubismcore.min.js', 'cubism-core-fallback');
-                        if (typeof Live2DCubismCore === 'undefined') {
-                            throw new Error('Live2DCubismCore 未正确加载');
-                        }
-                        
-                        console.log('🚀 步骤 2 (jsDelivr): 加载 PIXI.js...');
-                        await this.loadScript('https://cdn.jsdelivr.net/npm/pixi.js@7/dist/pixi.min.js', 'pixi-fallback');
-                        window.PIXI = PIXI;
-                        
-                        console.log('🚀 步骤 3 (jsDelivr): 加载 pixi-live2d-display...');
-                        await this.loadLive2DDisplayFallback();
-                        
-                        console.log('✓ 备用CDN加载成功');
-                        
-                    } catch (fallbackError) {
-                        console.error('❌ 备用CDN也失败:', fallbackError);
-                        throw new Error(`脚本加载彻底失败: 主CDN失败 - ${error.message}; 备用CDN失败 - ${fallbackError.message}`);
-                    }
-                }
-            }
-
-            static async loadLive2DDisplayFallback() {
-                const fallbackStrategies = [
-                    {
-                        name: 'jsDelivr 0.4.0 Cubism4专用',
-                        url: 'https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js',
-                        id: 'live2d-jsdelivr-cubism4'
-                    },
-                    {
-                        name: 'jsDelivr 0.4.0 完整版本',
-                        url: 'https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js',
-                        id: 'live2d-jsdelivr-index'
-                    }
-                ];
-
-                for (let i = 0; i < fallbackStrategies.length; i++) {
-                    const strategy = fallbackStrategies[i];
-                    console.log(`📦 备用策略 ${i + 1}: ${strategy.name}`);
-                    
-                    try {
-                        await this.loadScript(strategy.url, strategy.id);
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                        
-                        if (window.PIXI.live2d && window.PIXI.live2d.Live2DModel) {
-                            console.log(`✓ ${strategy.name} 加载成功！`);
-                            return;
-                        } else {
-                            throw new Error('插件未正确初始化');
-                        }
-                        
-                    } catch (error) {
-                        console.warn(`❌ 备用策略 ${i + 1} 失败: ${error.message}`);
-                        const script = document.getElementById(strategy.id);
-                        if (script) script.remove();
-                        
-                        if (i === fallbackStrategies.length - 1) {
-                            throw new Error('所有备用策略都失败了');
-                        }
-                    }
-                }
-            }
-        }
-
-        // 小智网关客户端
-        class XiaozhiClient {
-            constructor() {
-                this.sessionId = null;
-                this.ws = null;
-                this.isConnected = false;
-                this.isRecording = false;
-                this.mediaRecorder = null;
-                this.audioStream = null;
-                
-                this.gatewayUrl = 'http://localhost:3000';
-                this.wsUrl = null;
-                
-                // 音频相关
-                this.audioContext = null;
-                this.processor = null;
-                
-                // UI元素
-                this.voiceBtn = null;
-                this.voiceStatus = null;
-                this.interruptBtn = null;
-                
-                // 回调
-                this.onSttResult = null;
-                this.onLlmResponse = null;
-                this.onTtsUrl = null;
-                this.onError = null;
-            }
-
-            async init() {
-                try {
-                    // 获取UI元素
-                    this.voiceBtn = document.getElementById('voice-btn');
-                    this.voiceStatus = document.getElementById('voice-status');
-                    this.interruptBtn = document.getElementById('interrupt-btn');
-
-                    // 绑定事件
-                    this.voiceBtn.addEventListener('mousedown', () => this.startVoiceInput());
-                    this.voiceBtn.addEventListener('mouseup', () => this.stopVoiceInput());
-                    this.voiceBtn.addEventListener('touchstart', (e) => {
-                        e.preventDefault();
-                        this.startVoiceInput();
-                    });
-                    this.voiceBtn.addEventListener('touchend', (e) => {
-                        e.preventDefault();
-                        this.stopVoiceInput();
-                    });
-                    this.voiceBtn.addEventListener('click', () => this.connectToGateway());
-                    
-                    this.interruptBtn.addEventListener('click', () => this.interrupt());
-
-                    console.log('✓ XiaozhiClient 初始化完成');
-                } catch (error) {
-                    console.error('XiaozhiClient 初始化失败:', error);
-                    this.updateStatus('初始化失败');
-                }
-            }
-
-            async connectToGateway() {
-                if (this.isConnected) return;
-
-                try {
-                    this.updateStatus('正在连接...');
-                    this.voiceBtn.className = 'connecting';
-                    
-                    // 创建会话
-                    console.log('正在请求:', `${this.gatewayUrl}/session`);
-                    const response = await fetch(`${this.gatewayUrl}/session`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: 'live2d-user' })
-                    });
-                    console.log('收到响应:', response);
-
-                    if (!response.ok) {
-                        throw new Error(`会话创建失败: ${response.status}`);
-                    }
-
-                    const { sessionId, wsUrl } = await response.json();
-                    this.sessionId = sessionId;
-                    this.wsUrl = wsUrl.replace('http:', 'ws:');
-                    
-                    console.log('✓ 会话创建成功:', { sessionId, wsUrl: this.wsUrl });
-
-                    // 连接WebSocket
-                    await this.connectWebSocket();
-                    
-                } catch (error) {
-                    console.error('连接网关失败:', error);
-                    console.error('错误详情:', {
-                        message: error.message,
-                        stack: error.stack,
-                        type: error.constructor.name,
-                        gatewayUrl: this.gatewayUrl
-                    });
-                    this.updateStatus(`连接失败: ${error.message}`);
-                    this.voiceBtn.className = '';
-                    if (this.onError) this.onError(error);
-                }
-            }
-
-            async connectWebSocket() {
-                return new Promise((resolve, reject) => {
-                    try {
-                        this.ws = new WebSocket(this.wsUrl);
-                        
-                        this.ws.onopen = () => {
-                            console.log('✓ WebSocket连接成功');
-                            this.isConnected = true;
-                            this.updateStatus('长按说话');
-                            this.voiceBtn.className = '';
-                            this.interruptBtn.disabled = false;
-                            resolve();
-                        };
-
-                        this.ws.onmessage = (event) => {
-                            try {
-                                const message = JSON.parse(event.data);
-                                this.handleMessage(message);
-                            } catch (error) {
-                                console.error('解析消息失败:', error);
-                            }
-                        };
-
-                        this.ws.onclose = () => {
-                            console.log('WebSocket连接关闭');
-                            this.isConnected = false;
-                            this.updateStatus('连接断开');
-                            this.voiceBtn.className = '';
-                            this.interruptBtn.disabled = true;
-                        };
-
-                        this.ws.onerror = (error) => {
-                            console.error('WebSocket错误:', error);
-                            reject(error);
-                        };
-
-                        // 连接超时
-                        setTimeout(() => {
-                            if (!this.isConnected) {
-                                reject(new Error('WebSocket连接超时'));
-                            }
-                        }, 5000);
-
-                    } catch (error) {
-                        reject(error);
+                // 响应式处理
+                window.addEventListener('resize', () => {
+                    this.app.renderer.resize(window.innerWidth, window.innerHeight);
+                    if (this.model) {
+                        this.positionModel();
                     }
                 });
             }
 
-            handleMessage(message) {
-                console.log('收到消息:', message);
-                
-                switch (message.type) {
-                    case 'stt':
-                        console.log('语音识别结果:', message.data.text);
-                        if (this.onSttResult) this.onSttResult(message.data.text);
-                        break;
-                        
-                    case 'llm':
-                        console.log('AI回复:', message.data.text);
-                        if (this.onLlmResponse) this.onLlmResponse(message.data.text);
-                        break;
-                        
-                    case 'tts_start':
-                        console.log('TTS开始');
-                        this.updateStatus('AI正在回复...');
-                        break;
-                        
-                    case 'tts_url':
-                        console.log('TTS音频URL:', message.data.url);
-                        this.updateStatus('播放回复中...');
-                        if (this.onTtsUrl) this.onTtsUrl(message.data.url);
-                        break;
-                        
-                    case 'tts_end':
-                        console.log('TTS结束');
-                        this.updateStatus('长按说话');
-                        break;
-                        
-                    case 'error':
-                        console.error('服务器错误:', message.data);
-                        this.updateStatus('服务器错误');
-                        if (this.onError) this.onError(new Error(message.data.message || '服务器错误'));
-                        break;
-                        
-                    default:
-                        console.log('未知消息类型:', message.type);
-                }
-            }
-
-            async startVoiceInput() {
-                if (!this.isConnected) {
-                    await this.connectToGateway();
-                    return;
-                }
-                
-                if (this.isRecording) return;
-
-                try {
-                    console.log('开始录音...');
-                    this.isRecording = true;
-                    this.voiceBtn.className = 'recording';
-                    this.updateStatus('正在录音...');
-
-                    // 获取音频流
-                    this.audioStream = await navigator.mediaDevices.getUserMedia({ 
-                        audio: {
-                            sampleRate: 16000,
-                            channelCount: 1,
-                            echoCancellation: true,
-                            noiseSuppression: true
-                        }
-                    });
-
-                    // 创建AudioContext和处理器
-                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ 
-                        sampleRate: 16000 
-                    });
-                    
-                    const source = this.audioContext.createMediaStreamSource(this.audioStream);
-                    
-                    // 使用ScriptProcessorNode处理音频
-                    this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-                    
-                    this.processor.onaudioprocess = (event) => {
-                        if (!this.isRecording) return;
-                        
-                        const inputBuffer = event.inputBuffer;
-                        const inputData = inputBuffer.getChannelData(0);
-                        
-                        // 转换为16位PCM
-                        const pcmData = this.float32To16BitPCM(inputData);
-                        
-                        // 发送到网关
-                        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                            this.ws.send(pcmData);
-                        }
-                    };
-
-                    source.connect(this.processor);
-                    this.processor.connect(this.audioContext.destination);
-
-                } catch (error) {
-                    console.error('开始录音失败:', error);
-                    this.stopVoiceInput();
-                    this.updateStatus('录音失败');
-                    if (this.onError) this.onError(error);
-                }
-            }
-
-            stopVoiceInput() {
-                if (!this.isRecording) return;
-
-                try {
-                    console.log('停止录音...');
-                    this.isRecording = false;
-                    this.voiceBtn.className = '';
-                    this.updateStatus('处理中...');
-
-                    // 清理音频资源
-                    if (this.processor) {
-                        this.processor.disconnect();
-                        this.processor = null;
-                    }
-
-                    if (this.audioContext) {
-                        this.audioContext.close();
-                        this.audioContext = null;
-                    }
-
-                    if (this.audioStream) {
-                        this.audioStream.getTracks().forEach(track => track.stop());
-                        this.audioStream = null;
-                    }
-
-                } catch (error) {
-                    console.error('停止录音失败:', error);
-                }
-            }
-
-            float32To16BitPCM(float32Array) {
-                const buffer = new ArrayBuffer(float32Array.length * 2);
-                const view = new DataView(buffer);
-                let offset = 0;
-                
-                for (let i = 0; i < float32Array.length; i++, offset += 2) {
-                    let sample = Math.max(-1, Math.min(1, float32Array[i]));
-                    sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
-                    view.setInt16(offset, sample, true);
-                }
-                
-                return buffer;
-            }
-
-            interrupt() {
-                if (!this.isConnected || !this.ws) return;
-
-                try {
-                    console.log('发送打断信号...');
-                    this.ws.send(JSON.stringify({ type: 'interrupt' }));
-                    this.updateStatus('已打断');
-                } catch (error) {
-                    console.error('打断失败:', error);
-                    if (this.onError) this.onError(error);
-                }
-            }
-
-            updateStatus(status) {
-                if (this.voiceStatus) {
-                    this.voiceStatus.textContent = status;
-                }
-            }
-
-            disconnect() {
-                this.stopVoiceInput();
-                
-                if (this.ws) {
-                    this.ws.close();
-                    this.ws = null;
-                }
-                
-                this.isConnected = false;
-                this.sessionId = null;
-                this.wsUrl = null;
-                this.updateStatus('已断开');
-                
-                if (this.interruptBtn) {
-                    this.interruptBtn.disabled = true;
-                }
-            }
-        }
-
-        class Live2DApp {
-            constructor() {
-                this.app = null;
-                this.model = null;
-                this.modelSettings = null;
-                this.errorBar = document.getElementById('error-bar');
-                this.loadingStatus = document.getElementById('loading-status');
-                
-                // 小智客户端
-                this.xiaozhiClient = new XiaozhiClient();
-                this.currentTTSAudio = null;
-                
-                this.init();
-            }
-
-            showError(message) {
-                console.error(message);
-                this.errorBar.textContent = message;
-                this.errorBar.style.display = 'block';
-                this.hideLoading();
-            }
-
-            hideError() {
-                this.errorBar.style.display = 'none';
-            }
-
-            updateLoadingStatus(message) {
-                console.log(`📍 ${message}`);
-                if (this.loadingStatus) {
-                    this.loadingStatus.innerHTML = `<div class="loading-spinner"></div>${message}`;
-                }
-            }
-
-            hideLoading() {
-                if (this.loadingStatus) {
-                    this.loadingStatus.style.display = 'none';
-                }
-            }
-
-            async checkModelFile() {
-                const modelPath = 'Mould/Z.model3.json';
-                try {
-                    const response = await fetch(modelPath, { method: 'HEAD' });
-                    console.log(`HEAD ${modelPath}: ${response.status}`);
-                    
-                    if (!response.ok) {
-                        this.showError('请通过 HTTP 打开而不是 file://，并检查路径大小写');
-                        return false;
-                    }
-                    return true;
-                } catch (error) {
-                    console.log(`HEAD ${modelPath}: 请求失败`);
-                    this.showError('请通过 HTTP 打开而不是 file://，并检查路径大小写');
-                    return false;
-                }
-            }
-
-            async init() {
-                try {
-                    this.updateLoadingStatus('正在初始化 Live2D 应用...');
-                    
-                    // 使用新的脚本加载器
-                    this.updateLoadingStatus('正在按顺序加载脚本依赖...');
-                    await ScriptLoader.loadWithFallback();
-                    
-                    // 检查模型文件是否可访问
-                    this.updateLoadingStatus('正在检查模型文件...');
-                    const modelAccessible = await this.checkModelFile();
-                    if (!modelAccessible) {
-                        return;
-                    }
-
-                    // 创建 PIXI 应用 - 使用简化配置
-                    this.updateLoadingStatus('正在创建 PIXI 应用...');
-                    this.app = new window.PIXI.Application({
-                        view: document.getElementById('canvas'),
-                        width: window.innerWidth,
-                        height: window.innerHeight,
-                        backgroundColor: 0x0b1c21 // 直接设置背景色
-                    });
-
-                    console.log('✓ PIXI 应用创建成功');
-
-                    // 窗口大小调整
-                    window.addEventListener('resize', () => this.resize());
-
-                    // 加载模型
-                    this.updateLoadingStatus('正在加载 Live2D 模型...');
-                    await this.loadModel();
-                    
-                } catch (error) {
-                    this.showError(`初始化失败: ${error.message}`);
-                    console.error('初始化详细错误:', error);
-                }
-            }
-
             async loadModel() {
                 try {
-                    const modelPath = 'Mould/Z.model3.json';
+                    console.log('正在加载Live2D模型...');
                     
-                    console.log('开始加载模型:', modelPath);
-                    
-                    // 使用官方推荐的 Live2DModel.from() 方法
-                    this.updateLoadingStatus('正在解析模型文件...');
-                    this.model = await window.PIXI.live2d.Live2DModel.from(modelPath);
-                    
-                    if (!this.model) {
-                        throw new Error('模型对象为空');
+                    // 验证模型文件
+                    const response = await fetch('Mould/Z.model3.json', { method: 'HEAD' });
+                    if (!response.ok) {
+                        throw new Error('模型文件不存在或无法访问');
                     }
 
-                    console.log('✓ 模型加载成功，开始设置...');
-                    this.updateLoadingStatus('正在设置模型参数...');
-
-                    // 获取模型设置 - 使用正确的访问方式
-                    this.modelSettings = this.model.internalModel.settings;
-                    
-                    // 打印调试信息
-                    console.log('模型设置信息:');
-                    if (this.modelSettings.motions) {
-                        console.table(this.modelSettings.motions);
-                    }
-                    if (this.modelSettings.expressions) {
-                        console.table(this.modelSettings.expressions);
-                    }
-
-                    // 添加模型到舞台
-                    this.updateLoadingStatus('正在将模型添加到舞台...');
+                    this.model = await PIXI.live2d.Live2DModel.from('Mould/Z.model3.json');
                     this.app.stage.addChild(this.model);
-
-                    // 设置模型位置和缩放
-                    this.updateLoadingStatus('正在调整模型位置...');
                     this.positionModel();
 
-                    // 创建控制按钮
-                    this.updateLoadingStatus('正在创建控制按钮...');
-                    this.createControls();
+                    // 保存初始状态快照
+                    this.saveInitialState();
 
-                    // 初始化小智客户端
-                    this.updateLoadingStatus('正在初始化语音功能...');
-                    await this.setupXiaozhiClient();
-
-                    this.hideError();
-                    this.hideLoading();
-                    console.log('✓ Live2D 模型和语音功能完全设置完成');
-
+                    console.log('✓ Live2D模型加载成功');
                 } catch (error) {
-                    this.showError(`模型加载失败: ${error.message}`);
-                    console.error('模型加载详细错误:', error);
-                    console.error('错误堆栈:', error.stack);
+                    console.error('模型加载失败:', error);
+                    throw error;
                 }
             }
 
             positionModel() {
                 if (!this.model) return;
 
-                const canvas = this.app.view;
-                const canvasWidth = canvas.width;
-                const canvasHeight = canvas.height;
-
-                console.log(`🔍 画布尺寸: ${canvasWidth} x ${canvasHeight}`);
-
-                // 先重置模型位置和缩放
-                this.model.x = 0;
-                this.model.y = 0;
-                this.model.scale.set(1);
-
-                // 获取模型的原始边界
-                const originalBounds = this.model.getBounds();
-                console.log(`🔍 原始边界:`, {
-                    x: originalBounds.x,
-                    y: originalBounds.y, 
-                    width: originalBounds.width,
-                    height: originalBounds.height
-                });
-
-                // 设置锚点到模型中心
+                // 先设置锚点和位置，确保模型居中显示
                 this.model.anchor.set(0.5, 0.5);
-                
-                // 重新获取边界（设置锚点后）
-                const bounds = this.model.getBounds();
-                const modelWidth = bounds.width;
-                const modelHeight = bounds.height;
-                
-                console.log(`🔍 锚点设置后边界: ${modelWidth} x ${modelHeight}`);
+                this.model.x = window.innerWidth * 0.5;
+                this.model.y = window.innerHeight * 0.5;
 
-                // 计算适合的缩放比例
-                const scaleX = (canvasWidth * 0.8) / modelWidth; // 80% 画布宽度
-                const scaleY = (canvasHeight * 0.8) / modelHeight; // 80% 画布高度
-                const scale = Math.min(scaleX, scaleY);
+                // 等待模型完全加载并获取正确尺寸，最多重试5次
+                if (!this.positionRetryCount) this.positionRetryCount = 0;
 
-                console.log(`🔍 缩放计算: scaleX=${scaleX.toFixed(2)}, scaleY=${scaleY.toFixed(2)}, final=${scale.toFixed(2)}`);
-
-                // 应用缩放
-                this.model.scale.set(scale);
-
-                // 将模型放置在画布正中心
-                this.model.x = canvasWidth / 2;
-                this.model.y = canvasHeight / 2;
-
-                // 获取最终边界进行验证
-                const finalBounds = this.model.getBounds();
-                
-                console.log(`✓ 最终模型定位:`);
-                console.log(`  位置: (${this.model.x}, ${this.model.y})`);
-                console.log(`  缩放: ${scale.toFixed(2)}`);
-                console.log(`  最终边界:`, {
-                    x: finalBounds.x.toFixed(2),
-                    y: finalBounds.y.toFixed(2),
-                    width: finalBounds.width.toFixed(2),
-                    height: finalBounds.height.toFixed(2)
-                });
-
-                // 检查是否在画布范围内
-                const isInBounds = finalBounds.x >= 0 && 
-                                 finalBounds.y >= 0 && 
-                                 finalBounds.x + finalBounds.width <= canvasWidth &&
-                                 finalBounds.y + finalBounds.height <= canvasHeight;
-                                 
-                console.log(`✓ 模型是否完全在画布内: ${isInBounds}`);
-            }
-
-            createControls() {
-                if (!this.modelSettings) return;
-
-                this.createMotionButtons();
-                this.createExpressionButtons();
-            }
-
-            createMotionButtons() {
-                const motionContainer = document.getElementById('motion-buttons');
-                const motions = this.modelSettings.motions;
-
-                Object.keys(motions).forEach(group => {
-                    motions[group].forEach((motion, index) => {
-                        const button = document.createElement('button');
-                        const fileName = motion.File.split('/').pop().replace('.motion3.json', '');
-                        button.textContent = fileName;
-                        button.className = 'control-btn';
-                        
-                        button.onclick = () => {
-                            this.playMotion(group, index, fileName);
-                        };
-                        
-                        motionContainer.appendChild(button);
-                    });
-                });
-            }
-
-            createExpressionButtons() {
-                const expressionContainer = document.getElementById('expression-buttons');
-                const expressions = this.modelSettings.expressions;
-
-                expressions.forEach((expression, index) => {
-                    const button = document.createElement('button');
-                    const name = expression.Name || expression.File.split('/').pop().replace('.exp3.json', '');
-                    button.textContent = name;
-                    button.className = 'control-btn';
-                    
-                    button.onclick = () => {
-                        this.playExpression(index, name);
-                    };
-                    
-                    expressionContainer.appendChild(button);
-                });
-            }
-
-            playMotion(group, index, fileName) {
-                if (!this.model) {
-                    console.warn('模型未加载，无法播放动作');
+                if ((!this.model.width || !this.model.height || this.model.width < 10 || this.model.height < 10) && this.positionRetryCount < 5) {
+                    console.log(`🔄 模型尺寸未准备好，延迟定位... (第${this.positionRetryCount + 1}次)`);
+                    this.positionRetryCount++;
+                    setTimeout(() => this.positionModel(), 200);
                     return;
                 }
 
-                try {
-                    // 使用官方推荐的 API
-                    this.model.motion(group, index, 3); // 第三个参数是优先级
-                    console.log(`✓ 播放动作: 组="${group}", 索引=${index}, 文件=${fileName}`);
-                } catch (error) {
-                    console.error(`播放动作失败: ${error.message}`);
-                    // 如果新API失败，尝试旧API作为兜底
-                    try {
-                        this.model.internalModel.motionManager.startMotion(group, index, 3);
-                        console.log(`✓ 使用兜底API播放动作: 组="${group}", 索引=${index}`);
-                    } catch (fallbackError) {
-                        console.error(`兜底API也失败: ${fallbackError.message}`);
-                    }
-                }
-            }
-
-            playExpression(index, name) {
-                if (!this.model) {
-                    console.warn('模型未加载，无法播放表情');
+                // 如果重试5次后仍然无法获取尺寸，使用默认缩放
+                if (!this.model.width || !this.model.height || this.model.width < 10 || this.model.height < 10) {
+                    console.log('⚠️ 无法获取模型尺寸，使用默认缩放 0.5');
+                    this.model.scale.set(0.5);
+                    this.positionRetryCount = 0;
                     return;
                 }
 
-                try {
-                    // 使用官方推荐的 API
-                    this.model.expression(name || index);
-                    console.log(`✓ 播放表情: 索引=${index}, 名称=${name}`);
-                } catch (error) {
-                    console.error(`播放表情失败: ${error.message}`);
-                    // 如果新API失败，尝试旧API作为兜底
+                const scale = Math.min(
+                    window.innerWidth / this.model.width,
+                    window.innerHeight / this.model.height
+                ) * 0.7;
+
+                // 防止异常缩放
+                const finalScale = Math.max(0.1, Math.min(2.0, scale));
+                console.log(`📐 模型定位: 窗口${window.innerWidth}x${window.innerHeight}, 模型${this.model.width}x${this.model.height}, 缩放${finalScale}`);
+
+                this.model.scale.set(finalScale);
+                this.positionRetryCount = 0;
+            }
+
+            setupControls() {
+                if (!this.model) return;
+
+                const motionsContainer = document.getElementById('motions-container');
+                const expressionsContainer = document.getElementById('expressions-container');
+
+                // 从模型文件中获取动作列表（按索引顺序对应motion文件）
+                const motions = [
+                    { name: '待机', group: '', index: 0 },
+                    { name: '惊讶', group: '', index: 1 },
+                    { name: '开心', group: '', index: 2 },
+                    { name: '生气', group: '', index: 3 },
+                    { name: '眨眼', group: '', index: 4 },
+                    { name: '摇头', group: '', index: 5 },
+                    { name: '说话', action: 'talk' }
+                ];
+
+                // 生成动作按钮
+                motions.forEach(motion => {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn small';
+                    btn.textContent = motion.name;
+                    btn.onclick = () => {
+                        if (motion.action === 'talk') {
+                            // 特殊处理说话动作
+                            this.apiPlayTalk();
+                        } else {
+                            this.playMotion(motion.group, motion.index);
+                        }
+                    };
+                    motionsContainer.appendChild(btn);
+                });
+
+                // 从模型文件中获取表情列表
+                const expressions = [
+                    { name: '爱心眼', file: 'A1爱心眼' },
+                    { name: '生气', file: 'A2生气' },
+                    { name: '星星眼', file: 'A3星星眼' },
+                    { name: '哭哭', file: 'A4哭哭' },
+                    { name: '麦克风', file: 'B1麦克风' },
+                    { name: '外套', file: 'B2外套' },
+                    { name: '舌头', file: '舌头' }
+                ];
+
+                // 生成表情按钮
+                expressions.forEach(expression => {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn small';
+                    btn.textContent = expression.name;
+                    btn.onclick = () => this.playExpression(expression.file);
+                    expressionsContainer.appendChild(btn);
+                });
+            }
+
+            playMotion(group, index = 0, skipIdleReturn = false) {
+                if (this.model && this.model.internalModel) {
                     try {
-                        this.model.internalModel.expressionManager.setExpression(index);
-                        console.log(`✓ 使用兜底API播放表情: 索引=${index}`);
-                    } catch (fallbackError) {
-                        console.error(`兜底API也失败: ${fallbackError.message}`);
-                    }
-                }
-            }
+                        // 使用pixi-live2d-display的motion方法，传入组名和索引
+                        this.model.motion(group, index);
+                        console.log(`播放动作: 组=${group}, 索引=${index}`);
+                        
+                        // 更新状态显示
+                        const statusEl = document.getElementById('status');
+                        if (statusEl) {
+                            statusEl.textContent = `播放动作: 索引 ${index}`;
+                        }
 
-            resize() {
-                if (!this.app) return;
-
-                this.app.renderer.resize(window.innerWidth, window.innerHeight);
-                this.positionModel();
-            }
-
-            async setupXiaozhiClient() {
-                try {
-                    // 设置回调函数
-                    this.xiaozhiClient.onSttResult = (text) => {
-                        console.log('📝 语音识别:', text);
-                        // 可以在这里显示识别结果
-                    };
-
-                    this.xiaozhiClient.onLlmResponse = (text) => {
-                        console.log('🤖 AI回复:', text);
-                        // 开始说话动作
-                        this.playTalk();
-                    };
-
-                    this.xiaozhiClient.onTtsUrl = async (url) => {
-                        console.log('🔊 播放TTS:', url);
+                        // 如果不是待机动作且没有跳过回归，则设置自动回到待机
+                        if (!skipIdleReturn && !(group === '' && index === 0)) {
+                            this.scheduleIdleReturn();
+                        }
+                    } catch (error) {
+                        console.error('播放动作失败:', error);
+                        // 尝试其他方式
                         try {
-                            // 停止之前的音频
-                            this.stopCurrentTTS();
+                            console.log('尝试备用方法...');
+                            this.model.internalModel.motionManager.startMotion(group, index);
                             
-                            // 播放新的TTS音频
-                            this.currentTTSAudio = new Audio(url);
-                            this.currentTTSAudio.volume = 0.8;
-                            
-                            // 音频结束后回到待机状态
-                            this.currentTTSAudio.onended = () => {
-                                console.log('🔊 TTS播放完成');
-                                this.playIdle();
-                                this.currentTTSAudio = null;
+                            // 备用方法成功时也设置回到待机
+                            if (!skipIdleReturn && !(group === '' && index === 0)) {
+                                this.scheduleIdleReturn();
+                            }
+                        } catch (fallbackError) {
+                            console.error('备用方法也失败:', fallbackError);
+                        }
+                    }
+                }
+            }
+
+            // 安排回到待机动作
+            scheduleIdleReturn() {
+                // 清除之前的定时器
+                if (this.idleReturnTimer) {
+                    clearTimeout(this.idleReturnTimer);
+                }
+                
+                // 设置新的定时器，3秒后回到待机
+                this.idleReturnTimer = setTimeout(() => {
+                    try {
+                        this.playMotion('', 0, true); // skipIdleReturn = true 避免循环
+                        console.log('自动回归待机动作');
+                        
+                        const statusEl = document.getElementById('status');
+                        if (statusEl) {
+                            statusEl.textContent = '已回归待机状态';
+                        }
+                    } catch (error) {
+                        console.error('自动回归待机失败:', error);
+                    }
+                }, 3000); // 3秒后回到待机
+            }
+
+            playExpression(expressionName) {
+                if (this.model && this.model.internalModel) {
+                    try {
+                        // 使用pixi-live2d-display的expression方法
+                        this.model.expression(expressionName);
+                        console.log(`播放表情: ${expressionName}`);
+                        
+                        // 更新状态显示
+                        const statusEl = document.getElementById('status');
+                        if (statusEl) {
+                            statusEl.textContent = `播放表情: ${expressionName}`;
+                        }
+
+                        // 表情播放后不自动回归（移除表情重置功能）
+                        // this.scheduleIdleReturnWithExpression();
+                    } catch (error) {
+                        console.error('播放表情失败:', error);
+                    }
+                }
+            }
+
+            // 表情回归相关方法已移除，保持表情状态不自动重置
+
+            // 保存初始状态快照
+            saveInitialState() {
+                if (!this.model || !this.model.internalModel) {
+                    console.error('模型未加载，无法保存初始状态');
+                    return;
+                }
+
+                try {
+                    console.log('💾 保存初始状态快照...');
+                    
+                    const coreModel = this.model.internalModel.coreModel;
+                    const parameterCount = coreModel.getParameterCount();
+                    
+                    // 保存所有参数的初始值
+                    const parameters = [];
+                    for (let i = 0; i < parameterCount; i++) {
+                        const paramId = coreModel._parameterIds[i];
+                        const value = coreModel.getParameterValueByIndex(i);
+                        const defaultValue = coreModel.getParameterDefaultValue(i);
+                        
+                        parameters.push({
+                            index: i,
+                            id: paramId,
+                            value: value,
+                            defaultValue: defaultValue
+                        });
+                    }
+
+                    // 保存Part透明度
+                    const parts = [];
+                    const partCount = coreModel.getPartCount();
+                    for (let i = 0; i < partCount; i++) {
+                        parts.push({
+                            index: i,
+                            opacity: coreModel.getPartOpacityByIndex(i)
+                        });
+                    }
+
+                    // 保存表情管理器状态
+                    let expressionState = null;
+                    try {
+                        if (this.model.internalModel.motionManager && this.model.internalModel.motionManager.expressionManager) {
+                            expressionState = {
+                                currentExpression: null, // 初始状态没有表情
+                                reserveExpressionIndex: -1
                             };
-                            
-                            this.currentTTSAudio.onerror = (error) => {
-                                console.error('🔊 TTS播放失败:', error);
-                                this.playIdle();
-                                this.currentTTSAudio = null;
-                            };
-                            
-                            await this.currentTTSAudio.play();
-                            
-                        } catch (error) {
-                            console.error('播放TTS音频失败:', error);
-                            this.playIdle();
+                        }
+                    } catch (e) {
+                        console.log('表情管理器状态获取跳过');
+                    }
+
+                    // 创建完整快照
+                    this.initialStateSnapshot = {
+                        timestamp: Date.now(),
+                        parameters: parameters,
+                        parts: parts,
+                        expressionState: expressionState,
+                        modelPosition: {
+                            x: this.model.x,
+                            y: this.model.y,
+                            scaleX: this.model.scale.x,
+                            scaleY: this.model.scale.y
                         }
                     };
 
-                    this.xiaozhiClient.onError = (error) => {
-                        console.error('🚨 小智客户端错误:', error);
-                        this.showError(`语音功能错误: ${error.message}`);
-                    };
+                    console.log(`✅ 初始状态快照已保存: ${parameters.length}个参数, ${parts.length}个部件`);
+                    console.log('快照详情:', this.initialStateSnapshot);
 
-                    // 初始化小智客户端
-                    await this.xiaozhiClient.init();
-                    
-                    console.log('✓ 小智客户端设置完成');
                 } catch (error) {
-                    console.error('设置小智客户端失败:', error);
-                    // 不阻止应用启动，语音功能可选
+                    console.error('保存初始状态失败:', error);
                 }
             }
 
-            stopCurrentTTS() {
-                if (this.currentTTSAudio) {
-                    this.currentTTSAudio.pause();
-                    this.currentTTSAudio.currentTime = 0;
-                    this.currentTTSAudio = null;
-                }
-            }
-
-            // 全局方法：播放说话动作
-            playTalk() {
-                if (!this.model) {
-                    console.log('playTalk(): 模型未加载');
+            // 恢复初始状态快照
+            restoreInitialState() {
+                if (!this.initialStateSnapshot) {
+                    console.error('没有找到初始状态快照');
                     return;
                 }
 
-                if (!this.modelSettings || !this.modelSettings.motions) {
-                    console.log('playTalk(): 模型设置未找到');
+                if (!this.model || !this.model.internalModel) {
+                    console.error('模型未加载，无法恢复状态');
                     return;
                 }
 
-                const motions = this.modelSettings.motions;
-                let talkMotion = null;
-                let talkGroup = '';
-                let talkIndex = -1;
+                try {
+                    console.log('🔄 开始恢复初始状态...');
+                    
+                    const coreModel = this.model.internalModel.coreModel;
+                    const snapshot = this.initialStateSnapshot;
 
-                // 在所有动作中寻找包含 talk 或 kaixin 的
-                Object.keys(motions).forEach(group => {
-                    motions[group].forEach((motion, index) => {
-                        const fileName = motion.File.toLowerCase();
-                        if (fileName.includes('talk') || fileName.includes('kaixin')) {
-                            talkMotion = motion;
-                            talkGroup = group;
-                            talkIndex = index;
-                            return;
+                    // 恢复所有参数值
+                    console.log('恢复参数值...');
+                    snapshot.parameters.forEach(param => {
+                        try {
+                            // 使用初始时的实际值，不是默认值
+                            coreModel.setParameterValueByIndex(param.index, param.value);
+                            console.log(`恢复参数 ${param.id}: ${param.value}`);
+                        } catch (e) {
+                            console.warn(`参数${param.id}恢复失败:`, e.message);
                         }
                     });
-                });
 
-                // 如果没找到，使用第一个动作
-                if (!talkMotion) {
-                    const firstGroup = Object.keys(motions)[0];
-                    if (firstGroup && motions[firstGroup].length > 0) {
-                        talkMotion = motions[firstGroup][0];
-                        talkGroup = firstGroup;
-                        talkIndex = 0;
+                    // 恢复Part透明度
+                    console.log('恢复部件透明度...');
+                    snapshot.parts.forEach(part => {
+                        try {
+                            coreModel.setPartOpacityByIndex(part.index, part.opacity);
+                        } catch (e) {
+                            console.warn(`部件${part.index}透明度恢复失败:`, e.message);
+                        }
+                    });
+
+                    // 清除表情状态
+                    console.log('清除表情状态...');
+                    try {
+                        this.model.expression('');
+                        this.model.expression(null);
+                    } catch (e) {
+                        console.log('表情清除跳过:', e.message);
                     }
-                }
 
-                if (talkMotion) {
-                    const fileName = talkMotion.File.split('/').pop().replace('.motion3.json', '');
-                    this.playMotion(talkGroup, talkIndex, fileName);
-                    console.log(`✓ playTalk() 执行成功 - 使用动作: ${fileName}`);
-                } else {
-                    console.log('playTalk(): 未找到可播放的动作');
+                    // 强制更新模型多帧
+                    console.log('强制更新模型渲染...');
+                    for (let frame = 0; frame < 10; frame++) {
+                        try {
+                            if (this.model.internalModel.motionManager) {
+                                this.model.internalModel.motionManager.update(0.016);
+                            }
+                            if (this.model.update) {
+                                this.model.update(0.016);
+                            }
+                        } catch (e) {
+                            // 忽略更新错误
+                        }
+                    }
+
+                    // 恢复模型位置（虽然通常不会变）
+                    if (snapshot.modelPosition) {
+                        this.model.x = snapshot.modelPosition.x;
+                        this.model.y = snapshot.modelPosition.y;
+                        this.model.scale.set(snapshot.modelPosition.scaleX, snapshot.modelPosition.scaleY);
+                    }
+
+                    // 延迟播放待机动作确保状态稳定
+                    setTimeout(() => {
+                        this.playMotion('', 0, true); // skipIdleReturn = true 避免循环
+                        console.log('✨ 初始状态快照恢复完成');
+                        
+                        const statusEl = document.getElementById('status');
+                        if (statusEl) {
+                            statusEl.textContent = '已回归待机状态';
+                        }
+                    }, 100);
+
+                } catch (error) {
+                    console.error('恢复初始状态失败:', error);
+                    // 备用方案：尝试基础重置
+                    try {
+                        this.model.expression('');
+                        this.playMotion('', 0, true);
+                    } catch (fallbackError) {
+                        console.error('备用方案也失败:', fallbackError);
+                    }
                 }
             }
 
-            // 全局方法：播放待机动作
-            playIdle() {
-                if (!this.model) {
-                    console.log('playIdle(): 模型未加载');
+            // 平滑渐变重置表情到初始状态
+            smoothResetExpression() {
+                if (!this.model || !this.model.internalModel) {
+                    console.error('模型未加载，无法进行渐变重置');
                     return;
                 }
 
-                if (!this.modelSettings || !this.modelSettings.motions) {
-                    console.log('playIdle(): 模型设置未找到');
-                    return;
+                try {
+                    const coreModel = this.model.internalModel.coreModel;
+                    const duration = 500; // 渐变持续时间500ms
+                    const frameRate = 60; // 60FPS
+                    const totalFrames = Math.floor(duration / (1000 / frameRate));
+                    let currentFrame = 0;
+
+                    console.log(`🎬 渐变重置动画：${totalFrames}帧，持续${duration}ms`);
+
+                    // 收集需要重置的表情参数的初始状态
+                    const expressionParams = [];
+                    const expressionParamNames = ['axy', 'axy2', 'shengqi', 'shengqi2', 'xxy', 'xxy2', 'kuku', 'kuku2', 'mkf', 'waitao'];
+                    
+                    for (let i = 0; i < expressionParamNames.length; i++) {
+                        const paramName = expressionParamNames[i];
+                        const currentValue = coreModel.getParameterValueByIndex(i);
+                        const defaultValue = coreModel.getParameterDefaultValue(i);
+                        
+                        if (Math.abs(currentValue - defaultValue) > 0.001) {
+                            expressionParams.push({
+                                index: i,
+                                name: paramName,
+                                startValue: currentValue,
+                                targetValue: defaultValue
+                            });
+                            console.log(`📊 参数 ${paramName}: ${currentValue} → ${defaultValue}`);
+                        }
+                    }
+
+                    if (expressionParams.length === 0) {
+                        console.log('⚠️  参数已是默认值，但可能存在视觉同步问题，强制刷新渲染');
+                        // 即使参数是默认值，也要强制视觉同步
+                        this.forceVisualSync();
+                        return;
+                    }
+
+                    // 创建平滑动画函数
+                    const animateFrame = () => {
+                        currentFrame++;
+                        const progress = currentFrame / totalFrames;
+                        
+                        // 使用缓出函数创建更自然的动画曲线
+                        const easeOut = 1 - Math.pow(1 - progress, 3);
+                        
+                        // 更新每个需要重置的参数
+                        expressionParams.forEach(param => {
+                            const currentVal = param.startValue + (param.targetValue - param.startValue) * easeOut;
+                            coreModel.setParameterValueByIndex(param.index, currentVal);
+                        });
+
+                        // 强制更新模型渲染
+                        if (this.model.internalModel.motionManager) {
+                            this.model.internalModel.motionManager.update(0.016);
+                        }
+                        if (this.model.update) {
+                            this.model.update(0.016);
+                        }
+
+                        // 继续动画或完成
+                        if (currentFrame < totalFrames) {
+                            requestAnimationFrame(animateFrame);
+                        } else {
+                            console.log('🎯 渐变重置完成');
+                            this.finalizeExpressionReset();
+                        }
+                    };
+
+                    // 开始动画
+                    requestAnimationFrame(animateFrame);
+
+                } catch (error) {
+                    console.error('渐变重置失败:', error);
+                    // 备用方案：直接重置
+                    this.resetExpressionParameters();
                 }
+            }
 
-                const motions = this.modelSettings.motions;
-                let idleMotion = null;
-                let idleGroup = '';
-                let idleIndex = -1;
-
-                // 寻找 Idle 组或包含 idle 的动作
-                Object.keys(motions).forEach(group => {
-                    if (group.toLowerCase() === 'idle') {
-                        if (motions[group].length > 0) {
-                            idleMotion = motions[group][0];
-                            idleGroup = group;
-                            idleIndex = 0;
-                            return;
+            // 强制视觉同步 - 解决参数正确但视觉未更新的问题
+            forceVisualSync() {
+                console.log('🔄 强制视觉同步开始...');
+                
+                try {
+                    const coreModel = this.model.internalModel.coreModel;
+                    
+                    // 方法1: 通过微小扰动强制更新视觉
+                    console.log('方法1: 微扰动同步');
+                    const expressionParamNames = ['axy', 'axy2', 'shengqi', 'shengqi2', 'xxy', 'xxy2', 'kuku', 'kuku2', 'mkf', 'waitao'];
+                    
+                    expressionParamNames.forEach((paramName, index) => {
+                        const defaultValue = coreModel.getParameterDefaultValue(index);
+                        
+                        // 先设置一个极小的偏移值，再设回默认值，强制触发更新
+                        coreModel.setParameterValueByIndex(index, defaultValue + 0.001);
+                        coreModel.setParameterValueByIndex(index, defaultValue - 0.001);
+                        coreModel.setParameterValueByIndex(index, defaultValue);
+                        
+                        console.log(`微扰动: ${paramName} = ${defaultValue}`);
+                    });
+                    
+                    // 方法2: 强制多次更新渲染
+                    console.log('方法2: 强制渲染更新');
+                    for (let frame = 0; frame < 30; frame++) {
+                        // 更新motionManager
+                        if (this.model.internalModel.motionManager) {
+                            this.model.internalModel.motionManager.update(0.016);
+                        }
+                        
+                        // 更新模型
+                        if (this.model.update) {
+                            this.model.update(0.016);
+                        }
+                        
+                        // 更新内部模型
+                        if (this.model.internalModel.update) {
+                            this.model.internalModel.update(0.016);
                         }
                     }
                     
-                    motions[group].forEach((motion, index) => {
-                        const fileName = motion.File.toLowerCase();
-                        if (fileName.includes('idle')) {
-                            idleMotion = motion;
-                            idleGroup = group;
-                            idleIndex = index;
-                            return;
+                    // 方法3: 强制表情API多次调用
+                    console.log('方法3: 表情API强制重置');
+                    try {
+                        this.model.expression('');
+                        this.model.expression(null);
+                        this.model.expression('');
+                        
+                        // 再次更新渲染
+                        for (let i = 0; i < 10; i++) {
+                            if (this.model.internalModel.motionManager) {
+                                this.model.internalModel.motionManager.update(0.016);
+                            }
                         }
+                    } catch (e) {
+                        console.log('表情API调用异常:', e.message);
+                    }
+                    
+                    // 方法4: PIXI强制重绘
+                    console.log('方法4: PIXI强制重绘');
+                    if (this.app) {
+                        this.app.render();
+                        if (this.app.ticker) {
+                            this.app.ticker.update();
+                        }
+                    }
+                    
+                    // 方法5: 延迟多次确认
+                    setTimeout(() => {
+                        console.log('延迟确认视觉同步...');
+                        for (let i = 0; i < 5; i++) {
+                            if (this.model.update) this.model.update(0.016);
+                        }
+                        
+                        // 最后播放待机动作
+                        setTimeout(() => {
+                            this.playMotion('', 0, true);
+                            console.log('🎯 强制视觉同步完成');
+                        }, 100);
+                    }, 200);
+                    
+                } catch (error) {
+                    console.error('强制视觉同步失败:', error);
+                }
+            }
+
+            // 完成表情重置后的最终处理
+            finalizeExpressionReset() {
+                try {
+                    // 最终确保所有参数都是精确的默认值
+                    const coreModel = this.model.internalModel.coreModel;
+                    const expressionParamNames = ['axy', 'axy2', 'shengqi', 'shengqi2', 'xxy', 'xxy2', 'kuku', 'kuku2', 'mkf', 'waitao'];
+                    
+                    expressionParamNames.forEach((paramName, index) => {
+                        const defaultValue = coreModel.getParameterDefaultValue(index);
+                        coreModel.setParameterValueByIndex(index, defaultValue);
                     });
+
+                    // 额外的表情API重置
+                    this.model.expression('');
+                    this.model.expression(null);
+
+                    // 强制更新几帧确保生效
+                    for (let i = 0; i < 5; i++) {
+                        if (this.model.internalModel.motionManager) {
+                            this.model.internalModel.motionManager.update(0.016);
+                        }
+                        if (this.model.update) {
+                            this.model.update(0.016);
+                        }
+                    }
+
+                    // 延迟播放待机动作
+                    setTimeout(() => {
+                        this.playMotion('', 0, true); // skipIdleReturn = true 避免循环
+                        console.log('✨ 表情渐变重置完成，已回归待机状态');
+                        
+                        const statusEl = document.getElementById('status');
+                        if (statusEl) {
+                            statusEl.textContent = '已回归待机状态';
+                        }
+                    }, 100);
+
+                } catch (error) {
+                    console.error('最终重置处理失败:', error);
+                }
+            }
+
+            // 参数重置方法 - 直接重置表情参数，避免模型闪烁
+            resetExpressionParameters() {
+                if (!this.model || !this.model.internalModel) {
+                    console.error('模型未加载，无法重置表情参数');
+                    return;
+                }
+
+                try {
+                    console.log('🔄 开始重置表情参数...');
+                    console.log('模型对象:', this.model);
+                    console.log('内部模型:', this.model.internalModel);
+                    
+                    // 先尝试所有已知的重置方法
+                    let success = false;
+                    
+                    // 方法1: 使用Live2D Core API直接重置参数
+                    const coreModel = this.model.internalModel.coreModel;
+                    console.log('Core模型:', coreModel);
+                    
+                    if (coreModel) {
+                        const parameterCount = coreModel.getParameterCount();
+                        console.log(`发现 ${parameterCount} 个参数`);
+                        let resetCount = 0;
+                        
+                        // 先检查Core模型的可用方法
+                        console.log('=== Core模型可用方法 ===');
+                        console.log('Core模型属性:', Object.keys(coreModel));
+                        console.log('Core模型方法:', Object.getOwnPropertyNames(Object.getPrototypeOf(coreModel)));
+                        
+                        // 尝试不同的API方法名称
+                        const possibleMethods = [
+                            'getParameterId', 'getParameterIds', '_parameterIds',
+                            'getParameterDefaultValue', 'getParameterDefaultValues', '_parameterDefaultValues',
+                            'getParameterValue', 'getParameterValues', '_parameterValues',
+                            'setParameterValue', 'setParameterValues'
+                        ];
+                        
+                        console.log('=== 检查API方法可用性 ===');
+                        possibleMethods.forEach(method => {
+                            console.log(`${method}: ${typeof coreModel[method]}`);
+                        });
+                        
+                        // 使用正确的API方法重置参数
+                        console.log('=== 使用正确API重置参数 ===');
+                        
+                        for (let i = 0; i < parameterCount; i++) {
+                            try {
+                                // 使用正确的API获取参数信息
+                                const parameterId = coreModel._parameterIds[i];
+                                const currentValue = coreModel.getParameterValueByIndex(i);
+                                const defaultValue = coreModel.getParameterDefaultValue(i);
+                                
+                                // 只显示前20个参数的详细信息，避免日志过多
+                                if (i < 20) {
+                                    console.log(`参数${i}: ${parameterId}`);
+                                    console.log(`  当前值: ${currentValue}, 默认值: ${defaultValue}`);
+                                }
+                                
+                                // 检查是否是表情相关参数并需要重置
+                                const isExpressionParam = this.isExpressionParameterByName(parameterId);
+                                const needsReset = Math.abs(currentValue - defaultValue) > 0.001;
+                                
+                                if (isExpressionParam && needsReset) {
+                                    console.log(`🎯 重置表情参数: ${parameterId} ${currentValue} → ${defaultValue}`);
+                                    coreModel.setParameterValueByIndex(i, defaultValue);
+                                    resetCount++;
+                                    success = true;
+                                } else if (needsReset && i < 20) {
+                                    console.log(`⏭️  跳过非表情参数: ${parameterId}`);
+                                }
+                                
+                            } catch (e) {
+                                if (i < 5) { // 只显示前几个错误
+                                    console.error(`参数${i}处理失败:`, e.message);
+                                }
+                            }
+                        }
+                        
+                        console.log(`✓ 参数扫描完成，重置了 ${resetCount} 个参数`);
+                    }
+                    
+                    // 方法2: pixi-live2d-display的表情API
+                    try {
+                        console.log('尝试表情API重置...');
+                        this.model.expression(''); // 空字符串应该清除表情
+                        this.model.expression(null); // null值重置
+                        console.log('✓ 表情API调用完成');
+                        success = true;
+                    } catch (e) {
+                        console.error('表情API重置失败:', e);
+                    }
+                    
+                    // 方法3: 表情管理器重置
+                    try {
+                        console.log('检查表情管理器...');
+                        const motionManager = this.model.internalModel.motionManager;
+                        console.log('Motion管理器:', motionManager);
+                        
+                        if (motionManager) {
+                            // 查找表情管理器
+                            if (motionManager.expressionManager) {
+                                console.log('找到表情管理器:', motionManager.expressionManager);
+                                motionManager.expressionManager.setExpression(null);
+                                success = true;
+                            }
+                            
+                            // 强制更新多帧确保生效
+                            for (let i = 0; i < 5; i++) {
+                                motionManager.update(0.016);
+                            }
+                            console.log('✓ 强制更新5帧完成');
+                        }
+                    } catch (e) {
+                        console.error('表情管理器重置失败:', e);
+                    }
+                    
+                    // 方法4: 强制刷新模型显示 - 多种方法组合
+                    try {
+                        console.log('🔄 强制刷新模型显示...');
+                        
+                        // 强制更新多帧确保参数生效到视觉层
+                        for (let frame = 0; frame < 10; frame++) {
+                            if (this.model.update) {
+                                this.model.update(0.016);
+                            }
+                            if (this.model.internalModel && this.model.internalModel.update) {
+                                this.model.internalModel.update(0.016);
+                            }
+                        }
+                        
+                        // 强制重绘
+                        if (this.model._refresh) {
+                            this.model._refresh();
+                        }
+                        
+                        // 触发渲染器更新
+                        if (this.app && this.app.render) {
+                            this.app.render();
+                        }
+                        
+                        // 强制PIXI重绘
+                        if (this.model.texture) {
+                            this.model.texture.update();
+                        }
+                        
+                        console.log('✓ 模型强制刷新完成(10帧)');
+                    } catch (e) {
+                        console.error('模型刷新失败:', e);
+                    }
+                    
+                    // 方法5: 延迟再次确认重置
+                    setTimeout(() => {
+                        try {
+                            console.log('🔍 延迟验证重置效果...');
+                            
+                            // 再次检查关键表情参数的值
+                            const keyParams = ['shengqi', 'shengqi2', 'axy', 'axy2', 'xxy', 'xxy2', 'kuku', 'kuku2'];
+                            keyParams.forEach((paramName, index) => {
+                                const currentValue = coreModel.getParameterValueByIndex(index);
+                                const defaultValue = coreModel.getParameterDefaultValue(index);
+                                console.log(`验证 ${paramName}: 当前=${currentValue}, 默认=${defaultValue}`);
+                                
+                                // 如果仍有差异，再次强制重置
+                                if (Math.abs(currentValue - defaultValue) > 0.001) {
+                                    coreModel.setParameterValueByIndex(index, defaultValue);
+                                    console.log(`🔧 二次重置: ${paramName}`);
+                                }
+                            });
+                            
+                            // 再次强制更新
+                            for (let i = 0; i < 5; i++) {
+                                if (this.model.update) this.model.update(0.016);
+                            }
+                            
+                            console.log('✅ 延迟验证完成');
+                            
+                        } catch (e) {
+                            console.error('延迟验证失败:', e);
+                        }
+                    }, 500); // 500ms后验证
+                    
+                    if (success) {
+                        console.log('🎉 表情重置操作已执行');
+                    } else {
+                        console.error('❌ 所有重置方法都失败了');
+                        // 最后的备用方案
+                        this.fallbackExpressionReset();
+                    }
+
+                } catch (error) {
+                    console.error('❌ 表情参数重置过程出错:', error);
+                    this.fallbackExpressionReset();
+                }
+            }
+
+            // 备用表情重置方案
+            fallbackExpressionReset() {
+                console.log('🚨 使用最后的备用方案...');
+                try {
+                    // 尝试播放一个"空"的表情动作
+                    if (this.model.motion) {
+                        this.model.motion('', 0); // 播放待机动作来覆盖表情
+                    }
+                    
+                    // 等待一点时间再播放标准待机
+                    setTimeout(() => {
+                        if (this.model.motion) {
+                            this.model.motion('', 0);
+                            console.log('✓ 备用方案：播放待机动作');
+                        }
+                    }, 100);
+                    
+                } catch (e) {
+                    console.error('备用方案也失败:', e);
+                }
+            }
+
+            // 判断参数是否与表情相关（基于实际模型参数名）
+            isExpressionParameterByName(parameterId) {
+                // 根据控制台输出，这个模型的表情参数名称
+                const expressionParams = [
+                    'axy',        // 爱心眼
+                    'axy2',       // 爱心眼2
+                    'shengqi',    // 生气
+                    'shengqi2',   // 生气2  
+                    'xxy',        // 星星眼
+                    'xxy2',       // 星星眼2
+                    'kuku',       // 哭哭
+                    'kuku2',      // 哭哭2
+                    'mkf',        // 麦克风
+                    'waitao',     // 外套
+                    'shetou'      // 舌头 (从模型文件推测)
+                ];
+                
+                return expressionParams.includes(parameterId);
+            }
+
+            // 原来的通用表情参数检测方法（备用）
+            isExpressionParameter(parameterId) {
+                // Live2D表情通常会影响这些参数
+                const expressionKeywords = [
+                    'ParamEyeL',      // 左眼相关
+                    'ParamEyeR',      // 右眼相关
+                    'ParamEyeBallX',  // 眼球X
+                    'ParamEyeBallY',  // 眼球Y
+                    'ParamBrowL',     // 左眉毛
+                    'ParamBrowR',     // 右眉毛
+                    'ParamMouth',     // 嘴部
+                    'ParamCheek',     // 脸颊
+                    'ParamFace',      // 脸部表情
+                    'ParamTears',     // 眼泪
+                    'ParamSweat',     // 汗水
+                    'Param',          // 通用参数前缀
+                    'Eye',            // 眼睛相关
+                    'Mouth',          // 嘴巴相关
+                    'Brow',           // 眉毛相关
+                    'Face'            // 脸部相关
+                ];
+                
+                return expressionKeywords.some(keyword => 
+                    parameterId.includes(keyword)
+                );
+            }
+
+            // ========== API调用方法 ==========
+            
+            // 状态调用API
+            apiPlayIdle() {
+                this.playMotion('', 0);
+                return { success: true, message: '播放待机状态', action: 'idle' };
+            }
+
+            apiPlayJingya() {
+                this.playMotion('', 1);
+                return { success: true, message: '播放惊讶状态', action: 'jingya' };
+            }
+
+            apiPlayKaixin() {
+                this.playMotion('', 2);
+                return { success: true, message: '播放开心状态', action: 'kaixin' };
+            }
+
+            apiPlayShengqi() {
+                this.playMotion('', 3);
+                return { success: true, message: '播放生气状态', action: 'shengqi' };
+            }
+
+            apiPlayWink() {
+                this.playMotion('', 4);
+                return { success: true, message: '播放眨眼状态', action: 'wink' };
+            }
+
+            apiPlayYaotou() {
+                this.playMotion('', 5);
+                return { success: true, message: '播放摇头状态', action: 'yaotou' };
+            }
+
+            apiPlayTalk() {
+                // 说话动作通过LipSync参数实现嘴部动作
+                if (!this.model) {
+                    return { success: false, message: '模型未加载', error: 'MODEL_NOT_READY' };
+                }
+                
+                // 尝试直接控制嘴部参数
+                try {
+                    console.log('🗣️ 开始调试说话动作...');
+                    console.log('模型结构:', this.model);
+                    console.log('内部模型:', this.model.internalModel);
+                    
+                    // 收集所有嘴部相关参数
+                    let mouthParams = [];
+                    
+                    // 方法1: 尝试通过PIXI Live2D的接口
+                    if (this.model.internalModel && this.model.internalModel.coreModel) {
+                        const coreModel = this.model.internalModel.coreModel;
+                        console.log('Core Model:', coreModel);
+                        
+                        // 尝试获取参数信息
+                        try {
+                            const paramCount = coreModel.getParameterCount ? coreModel.getParameterCount() : 0;
+                            console.log('参数总数:', paramCount);
+                            
+                            if (paramCount > 0) {
+                                console.log('🔍 开始搜索所有嘴部参数...');
+                                // 搜索所有168个参数，寻找所有嘴部相关的
+                                for (let i = 0; i < paramCount; i++) {
+                                    try {
+                                        // 获取参数名
+                                        let paramId = null;
+                                        if (coreModel._parameterIds && coreModel._parameterIds[i]) {
+                                            paramId = coreModel._parameterIds[i];
+                                        }
+                                        
+                                        if (paramId) {
+                                            // 搜索嘴部相关参数 - 扩展搜索范围
+                                            if (paramId.toLowerCase().includes('mouth') || 
+                                                paramId.toLowerCase().includes('lip') ||
+                                                paramId.includes('口') || 
+                                                paramId.includes('PARAM_MOUTH') ||
+                                                paramId.includes('ParamMouth') ||
+                                                paramId.toLowerCase().includes('嘴') ||
+                                                // 根据你的模型参数，可能还有其他中文参数
+                                                paramId.includes('嘴') ||
+                                                paramId.includes('mouth') ||
+                                                paramId.includes('Mouth')) {
+                                                
+                                                const originalValue = coreModel.getParameterValueByIndex(i);
+                                                const minValue = coreModel.getParameterMinimumValue(i);
+                                                const maxValue = coreModel.getParameterMaximumValue(i);
+                                                
+                                                mouthParams.push({
+                                                    index: i,
+                                                    name: paramId,
+                                                    originalValue: originalValue,
+                                                    minValue: minValue,
+                                                    maxValue: maxValue
+                                                });
+                                                
+                                                console.log(`🎯 找到嘴部参数: ${paramId} (索引:${i}) 当前值:${originalValue} 范围:[${minValue}, ${maxValue}]`);
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.warn(`获取参数 ${i} 失败:`, e);
+                                    }
+                                }
+                                
+                                console.log(`✅ 找到 ${mouthParams.length} 个嘴部相关参数:`, mouthParams);
+                                
+                                // 如果找到嘴部参数，创建说话动画
+                                if (mouthParams.length > 0) {
+                                    let animationStep = 0;
+                                    const talkAnimation = setInterval(() => {
+                                        // 为每个嘴部参数创建不同的动画
+                                        mouthParams.forEach((param, index) => {
+                                            let value;
+                                            const range = param.maxValue - param.minValue;
+                                            const mid = param.minValue + range * 0.5;
+                                            
+                                            if (param.name.includes('Form') || param.name.includes('form')) {
+                                                // 嘴形参数：创建周期性变化
+                                                value = mid + Math.sin(animationStep * 0.7 + index) * range * 0.4;
+                                            } else if (param.name.includes('Open') || param.name.includes('open')) {
+                                                // 开口参数：随机开合
+                                                value = param.minValue + (Math.sin(animationStep * 0.8) * 0.5 + 0.5) * range * 0.8;
+                                            } else {
+                                                // 其他嘴部参数：轻微变化
+                                                value = mid + Math.sin(animationStep * 0.6 + index * 0.5) * range * 0.3;
+                                            }
+                                            
+                                            // 确保值在有效范围内
+                                            value = Math.max(param.minValue, Math.min(param.maxValue, value));
+                                            coreModel.setParameterValueByIndex(param.index, value);
+                                        });
+                                        
+                                        animationStep++;
+                                        
+                                        if (animationStep > 40) { // 约3.2秒动画
+                                            clearInterval(talkAnimation);
+                                            // 恢复所有参数的原始值
+                                            mouthParams.forEach(param => {
+                                                coreModel.setParameterValueByIndex(param.index, param.originalValue);
+                                            });
+                                            console.log('🔄 说话动画结束，恢复原始嘴形');
+                                        }
+                                    }, 80);
+                                }
+                            }
+                        } catch (e) {
+                            console.error('获取参数数量失败:', e);
+                        }
+                    }
+                    
+                    if (mouthParams.length === 0) {
+                        console.log('⚠️ 未找到嘴部参数，使用眨眼替代动作');
+                        // 简单的替代动作 - 播放眨眼动作
+                        this.playMotion('', 4); // 播放眨眼动作
+                        return { success: true, message: '播放说话动作(眨眼替代)', action: 'talk' };
+                    }
+                    
+                    return { success: true, message: '播放说话动作', action: 'talk' };
+                    
+                } catch (error) {
+                    console.error('💥 说话动作实现失败:', error);
+                    console.error('错误堆栈:', error.stack);
+                    // 使用待机动作作为最终替代
+                    this.playMotion('', 0);
+                    return { success: true, message: '播放说话动作(错误替代)', action: 'talk' };
+                }
+            }
+
+            // 表情调用API
+            apiPlayLoveEyes() {
+                this.playExpression('A1爱心眼');
+                return { success: true, message: '播放爱心眼表情', expression: 'love_eyes' };
+            }
+
+            apiPlayAngryFace() {
+                this.playExpression('A2生气');
+                return { success: true, message: '播放生气表情', expression: 'angry' };
+            }
+
+            apiPlayStarEyes() {
+                this.playExpression('A3星星眼');
+                return { success: true, message: '播放星星眼表情', expression: 'star_eyes' };
+            }
+
+            apiPlayCrying() {
+                this.playExpression('A4哭哭');
+                return { success: true, message: '播放哭哭表情', expression: 'crying' };
+            }
+
+            apiPlayMicrophone() {
+                this.playExpression('B1麦克风');
+                return { success: true, message: '播放麦克风表情', expression: 'microphone' };
+            }
+
+            apiPlayCoat() {
+                this.playExpression('B2外套');
+                return { success: true, message: '播放外套表情', expression: 'coat' };
+            }
+
+            apiPlayTongue() {
+                this.playExpression('舌头');
+                return { success: true, message: '播放舌头表情', expression: 'tongue' };
+            }
+
+            // 通用API调用方法
+            apiCall(type, name) {
+                if (!this.isLoaded) {
+                    return { success: false, message: '模型未加载完成', error: 'MODEL_NOT_READY' };
+                }
+
+                try {
+                    if (type === 'action') {
+                        switch (name) {
+                            case 'idle': return this.apiPlayIdle();
+                            case 'jingya': return this.apiPlayJingya();
+                            case 'kaixin': return this.apiPlayKaixin();
+                            case 'shengqi': return this.apiPlayShengqi();
+                            case 'wink': return this.apiPlayWink();
+                            case 'yaotou': return this.apiPlayYaotou();
+                            case 'talk': return this.apiPlayTalk();
+                            default:
+                                return { success: false, message: `未知状态: ${name}`, error: 'UNKNOWN_ACTION' };
+                        }
+                    } else if (type === 'expression') {
+                        switch (name) {
+                            case 'love_eyes': return this.apiPlayLoveEyes();
+                            case 'angry': return this.apiPlayAngryFace();
+                            case 'star_eyes': return this.apiPlayStarEyes();
+                            case 'crying': return this.apiPlayCrying();
+                            case 'microphone': return this.apiPlayMicrophone();
+                            case 'coat': return this.apiPlayCoat();
+                            case 'tongue': return this.apiPlayTongue();
+                            default:
+                                return { success: false, message: `未知表情: ${name}`, error: 'UNKNOWN_EXPRESSION' };
+                        }
+                    } else {
+                        return { success: false, message: `未知类型: ${type}`, error: 'UNKNOWN_TYPE' };
+                    }
+                } catch (error) {
+                    console.error('API调用失败:', error);
+                    return { success: false, message: `调用失败: ${error.message}`, error: 'EXECUTION_FAILED' };
+                }
+            }
+
+            // 获取所有可用的状态和表情列表
+            apiGetAvailableList() {
+                return {
+                    success: true,
+                    data: {
+                        actions: [
+                            { id: 'idle', name: '待机', description: '回到待机状态' },
+                            { id: 'jingya', name: '惊讶', description: '表现惊讶的动作' },
+                            { id: 'kaixin', name: '开心', description: '表现开心的动作' },
+                            { id: 'shengqi', name: '生气', description: '表现生气的动作' },
+                            { id: 'wink', name: '眨眼', description: '眨眼动作' },
+                            { id: 'yaotou', name: '摇头', description: '摇头动作' },
+                            { id: 'talk', name: '说话', description: '说话时的嘴部动作' }
+                        ],
+                        expressions: [
+                            { id: 'love_eyes', name: '爱心眼', description: '爱心形状的眼睛表情' },
+                            { id: 'angry', name: '生气', description: '生气的面部表情' },
+                            { id: 'star_eyes', name: '星星眼', description: '星星形状的眼睛表情' },
+                            { id: 'crying', name: '哭哭', description: '哭泣的表情' },
+                            { id: 'microphone', name: '麦克风', description: '手持麦克风的表情' },
+                            { id: 'coat', name: '外套', description: '穿外套的装扮表情' },
+                            { id: 'tongue', name: '舌头', description: '吐舌头的表情' }
+                        ]
+                    }
+                };
+            }
+
+            // 原有的全局方法保持兼容
+            playTalk() {
+                return this.apiPlayTalk();
+            }
+
+            playIdle() {
+                return this.apiPlayIdle();
+            }
+        }
+
+        // ========== 小智AI客户端 ==========
+        class XiaozhiAIClient {
+            constructor() {
+                this.ws = null;
+                this.isConnected = false;
+                this.isRecording = false;
+                this.sessionId = null;
+                
+                // 音频相关
+                this.audioContext = null;
+                this.processor = null;
+                this.mediaStream = null;
+                
+                // UI元素
+                this.voiceBtn = document.getElementById('voice-btn');
+                this.statusDiv = document.getElementById('voice-status');
+                this.interruptBtn = document.getElementById('interrupt-btn');
+                
+                this.bindEvents();
+                this.updateDeviceInfo();
+            }
+
+            bindEvents() {
+                this.voiceBtn.addEventListener('click', () => {
+                    if (!this.isConnected) {
+                        this.connectToXiaozhi();
+                    }
                 });
 
-                if (idleMotion) {
-                    const fileName = idleMotion.File.split('/').pop().replace('.motion3.json', '');
-                    this.playMotion(idleGroup, idleIndex, fileName);
-                    console.log(`✓ playIdle() 执行成功 - 使用动作: ${fileName}`);
-                } else {
-                    console.log('playIdle(): 未找到 Idle 待机动作，忽略');
+                // 长按录音
+                this.voiceBtn.addEventListener('mousedown', (e) => {
+                    if (this.isConnected && !this.isRecording) {
+                        e.preventDefault();
+                        this.startRecording();
+                    }
+                });
+
+                this.voiceBtn.addEventListener('mouseup', (e) => {
+                    if (this.isRecording) {
+                        e.preventDefault();
+                        this.stopRecording();
+                    }
+                });
+
+                // 触摸支持
+                this.voiceBtn.addEventListener('touchstart', (e) => {
+                    if (this.isConnected && !this.isRecording) {
+                        e.preventDefault();
+                        this.startRecording();
+                    }
+                });
+
+                this.voiceBtn.addEventListener('touchend', (e) => {
+                    if (this.isRecording) {
+                        e.preventDefault();
+                        this.stopRecording();
+                    }
+                });
+
+                this.interruptBtn.addEventListener('click', () => {
+                    this.interrupt();
+                });
+            }
+
+            updateDeviceInfo() {
+                const deviceInfo = document.getElementById('device-info');
+                deviceInfo.textContent = `设备: ${XIAOZHI_CONFIG.deviceId}`;
+            }
+
+            async connectToXiaozhi() {
+                if (this.isConnected) return;
+
+                try {
+                    this.updateStatus('正在获取访问令牌...');
+                    this.voiceBtn.className = 'btn connecting';
+                    
+                    // 获取访问令牌
+                    const token = await this.getAccessToken();
+                    this.accessToken = token;
+                    
+                    this.updateStatus('正在连接小智AI...');
+                    
+                    // 生成会话ID
+                    this.sessionId = this.generateSessionId();
+                    
+                    // 连接WebSocket
+                    await this.connectWebSocket(token);
+                    
+                } catch (error) {
+                    console.error('连接失败:', error);
+                    this.updateStatus(`连接失败: ${error.message}`);
+                    this.voiceBtn.className = 'btn';
+                    showError('连接小智AI失败: ' + error.message);
+                }
+            }
+
+            async getAccessToken() {
+                try {
+                    const response = await fetch(XIAOZHI_CONFIG.otaUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Device-Id': XIAOZHI_CONFIG.deviceId,
+                            'Client-Id': XIAOZHI_CONFIG.clientId,
+                            'Content-Type': 'application/json',
+                            'User-Agent': 'Live2D-Client/1.0.0',
+                            'Accept-Language': 'zh-CN',
+                            'Activation-Version': '1.0.0'
+                        },
+                        body: JSON.stringify({
+                            application: {
+                                version: '1.0.0',
+                                elf_sha256: XIAOZHI_CONFIG.hmacKey
+                            },
+                            board: {
+                                type: 'live2d-client',
+                                name: 'live2d-client',
+                                ip: '127.0.0.1',
+                                mac: XIAOZHI_CONFIG.deviceId
+                            }
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`OTA请求失败: HTTP ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    console.log('OTA响应:', data);
+
+                    if (!data.websocket || !data.websocket.token) {
+                        throw new Error('OTA响应中缺少WebSocket令牌');
+                    }
+
+                    return data.websocket.token;
+                } catch (error) {
+                    console.error('获取访问令牌失败:', error);
+                    throw new Error('无法获取访问令牌: ' + error.message);
+                }
+            }
+
+            generateSessionId() {
+                return 'live2d_' + Date.now() + '_' + Math.random().toString(36).substring(2);
+            }
+
+            async connectWebSocket(token) {
+                return new Promise((resolve, reject) => {
+                    // 尝试不同的URL格式
+                    const wsUrl = `${XIAOZHI_CONFIG.websocketUrl}`;
+                    console.log('连接WebSocket:', wsUrl);
+                    console.log('使用token:', token);
+                    console.log('设备ID:', XIAOZHI_CONFIG.deviceId);
+                    console.log('客户端ID:', XIAOZHI_CONFIG.clientId);
+
+                    this.ws = new WebSocket(wsUrl);
+
+                    const timeout = setTimeout(() => {
+                        if (this.ws.readyState !== WebSocket.OPEN) {
+                            this.ws.close();
+                            reject(new Error('WebSocket连接超时'));
+                        }
+                    }, 10000);
+
+                    this.ws.onopen = () => {
+                        clearTimeout(timeout);
+                        console.log('✓ WebSocket连接成功');
+                        this.sendHelloMessage();
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        this.handleMessage(event);
+                    };
+
+                    this.ws.onclose = (event) => {
+                        console.log('WebSocket连接关闭:', event.code, event.reason);
+                        this.isConnected = false;
+                        this.updateStatus('连接已断开');
+                        this.voiceBtn.className = 'btn';
+                        this.voiceBtn.textContent = '重新连接';
+                        this.interruptBtn.disabled = true;
+                    };
+
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket错误:', error);
+                        clearTimeout(timeout);
+                        reject(new Error('WebSocket连接错误'));
+                    };
+
+                    // 等待hello响应
+                    const originalOnMessage = this.ws.onmessage;
+                    this.ws.onmessage = (event) => {
+                        try {
+                            const message = JSON.parse(event.data);
+                            if (message.type === 'hello_response') {
+                                console.log('✓ 收到hello响应:', message);
+                                this.isConnected = true;
+                                this.updateStatus('已连接 - 长按说话');
+                                this.voiceBtn.className = 'btn';
+                                this.voiceBtn.textContent = '长按说话';
+                                this.interruptBtn.disabled = false;
+                                this.ws.onmessage = originalOnMessage;
+                                resolve();
+                            }
+                        } catch (e) {
+                            // 忽略非JSON消息
+                        }
+                    };
+                });
+            }
+
+            sendHelloMessage() {
+                // 先发送认证信息
+                const authMessage = {
+                    authorization: `Bearer ${this.accessToken}`,
+                    protocol_version: '1',
+                    device_id: XIAOZHI_CONFIG.deviceId,
+                    client_id: XIAOZHI_CONFIG.clientId
+                };
+                
+                console.log('发送认证消息:', authMessage);
+                this.ws.send(JSON.stringify(authMessage));
+                
+                // 然后发送hello消息
+                const helloMessage = {
+                    type: 'hello',
+                    version: 1,
+                    features: { mcp: true },
+                    transport: 'websocket',
+                    audio_params: {
+                        format: 'opus',
+                        sample_rate: XIAOZHI_CONFIG.audio.sampleRate,
+                        channels: XIAOZHI_CONFIG.audio.channels,
+                        frame_duration: 60
+                    }
+                };
+                
+                console.log('发送hello消息:', helloMessage);
+                setTimeout(() => {
+                    this.ws.send(JSON.stringify(helloMessage));
+                }, 100);
+            }
+
+            handleMessage(event) {
+                try {
+                    // 尝试解析JSON消息
+                    let message;
+                    try {
+                        message = JSON.parse(event.data);
+                    } catch {
+                        // 如果不是JSON，可能是二进制数据
+                        console.log('收到二进制数据:', event.data.length, 'bytes');
+                        return;
+                    }
+
+                    console.log('收到消息:', message);
+
+                    switch (message.type) {
+                        case 'stt':
+                            this.handleSTTResult(message);
+                            break;
+                        case 'llm':
+                            this.handleLLMResponse(message);
+                            break;
+                        case 'tts':
+                            this.handleTTSMessage(message);
+                            break;
+                        case 'error':
+                            console.error('服务器错误:', message);
+                            showError('服务器错误: ' + (message.message || '未知错误'));
+                            break;
+                        default:
+                            console.log('未知消息类型:', message.type);
+                    }
+                } catch (error) {
+                    console.error('处理消息失败:', error);
+                }
+            }
+
+            handleSTTResult(message) {
+                console.log('STT结果:', message.text);
+                this.updateStatus(`听到: ${message.text}`);
+                
+                if (live2dManager.isLoaded) {
+                    live2dManager.playIdle();
+                }
+            }
+
+            handleLLMResponse(message) {
+                console.log('LLM响应:', message.text);
+                this.updateStatus(`小智: ${message.text.substring(0, 30)}...`);
+                
+                if (live2dManager.isLoaded) {
+                    live2dManager.playTalk();
+                }
+            }
+
+            handleTTSMessage(message) {
+                console.log('TTS消息:', message);
+                
+                if (message.state === 'start') {
+                    this.updateStatus('小智正在说话...');
+                    if (live2dManager.isLoaded) {
+                        live2dManager.playTalk();
+                    }
+                } else if (message.state === 'stop') {
+                    this.updateStatus('已连接 - 长按说话');
+                    if (live2dManager.isLoaded) {
+                        live2dManager.playIdle();
+                    }
+                }
+            }
+
+            async startRecording() {
+                if (!this.isConnected || this.isRecording) return;
+
+                try {
+                    this.isRecording = true;
+                    this.voiceBtn.className = 'btn recording';
+                    this.updateStatus('正在录音...');
+
+                    // 获取麦克风权限
+                    this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            sampleRate: XIAOZHI_CONFIG.audio.sampleRate,
+                            channelCount: XIAOZHI_CONFIG.audio.channels,
+                            echoCancellation: true,
+                            noiseSuppression: true
+                        }
+                    });
+
+                    // 创建音频上下文
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                        sampleRate: XIAOZHI_CONFIG.audio.sampleRate
+                    });
+
+                    const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+                    
+                    // 创建音频处理节点
+                    this.processor = this.audioContext.createScriptProcessor(XIAOZHI_CONFIG.audio.frameSize, 1, 1);
+                    
+                    this.processor.onaudioprocess = (event) => {
+                        const inputData = event.inputBuffer.getChannelData(0);
+                        const pcmData = new Int16Array(inputData.length);
+                        
+                        // 转换为16位PCM
+                        for (let i = 0; i < inputData.length; i++) {
+                            pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+                        }
+                        
+                        // 发送音频数据
+                        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                            this.ws.send(pcmData.buffer);
+                        }
+                    };
+
+                    source.connect(this.processor);
+                    this.processor.connect(this.audioContext.destination);
+
+                    console.log('✓ 开始录音');
+
+                } catch (error) {
+                    console.error('录音启动失败:', error);
+                    this.stopRecording();
+                    showError('无法访问麦克风: ' + error.message);
+                }
+            }
+
+            stopRecording() {
+                if (!this.isRecording) return;
+
+                this.isRecording = false;
+                this.voiceBtn.className = 'btn';
+                this.updateStatus('处理中...');
+
+                // 清理音频资源
+                if (this.processor) {
+                    this.processor.disconnect();
+                    this.processor = null;
+                }
+
+                if (this.audioContext) {
+                    this.audioContext.close();
+                    this.audioContext = null;
+                }
+
+                if (this.mediaStream) {
+                    this.mediaStream.getTracks().forEach(track => track.stop());
+                    this.mediaStream = null;
+                }
+
+                // 发送录音结束信号
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'audio_end', session_id: this.sessionId }));
+                }
+
+                console.log('✓ 录音结束');
+            }
+
+            interrupt() {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'interrupt', session_id: this.sessionId }));
+                    this.updateStatus('已中断');
+                    console.log('✓ 发送中断信号');
+                }
+            }
+
+            updateStatus(message) {
+                this.statusDiv.textContent = message;
+                
+                // 更新状态样式
+                this.statusDiv.className = 'status';
+                if (message.includes('已连接') || message.includes('成功')) {
+                    this.statusDiv.className += ' connected';
+                } else if (message.includes('失败') || message.includes('错误')) {
+                    this.statusDiv.className += ' error';
                 }
             }
         }
 
-        // 使用 window.onload 确保所有资源加载完成
-        window.onload = () => {
-            console.log('📍 页面和所有资源加载完成，开始初始化...');
+        // ========== 工具函数 ==========
+        function showError(message) {
+            const errorBar = document.getElementById('error-bar');
+            errorBar.textContent = message;
+            errorBar.className = 'error-bar show';
+            
+            setTimeout(() => {
+                errorBar.className = 'error-bar';
+            }, 5000);
+        }
+
+        // ========== 全局API接口 ==========
+        
+        // 调用状态或表情API
+        window.Live2DAPI = {
+            // 通用调用方法
+            call: function(type, name) {
+                if (live2dManager && live2dManager.isLoaded) {
+                    return live2dManager.apiCall(type, name);
+                } else {
+                    return { success: false, message: 'Live2D系统未初始化', error: 'SYSTEM_NOT_READY' };
+                }
+            },
+
+            // 状态调用方法
+            action: {
+                idle: () => Live2DAPI.call('action', 'idle'),
+                jingya: () => Live2DAPI.call('action', 'jingya'),
+                kaixin: () => Live2DAPI.call('action', 'kaixin'),
+                shengqi: () => Live2DAPI.call('action', 'shengqi'),
+                wink: () => Live2DAPI.call('action', 'wink'),
+                yaotou: () => Live2DAPI.call('action', 'yaotou'),
+                talk: () => Live2DAPI.call('action', 'talk')
+            },
+
+            // 表情调用方法
+            expression: {
+                love_eyes: () => Live2DAPI.call('expression', 'love_eyes'),
+                angry: () => Live2DAPI.call('expression', 'angry'),
+                star_eyes: () => Live2DAPI.call('expression', 'star_eyes'),
+                crying: () => Live2DAPI.call('expression', 'crying'),
+                microphone: () => Live2DAPI.call('expression', 'microphone'),
+                coat: () => Live2DAPI.call('expression', 'coat'),
+                tongue: () => Live2DAPI.call('expression', 'tongue')
+            },
+
+            // 获取可用列表
+            getAvailableList: function() {
+                if (live2dManager && live2dManager.isLoaded) {
+                    return live2dManager.apiGetAvailableList();
+                } else {
+                    return { success: false, message: 'Live2D系统未初始化', error: 'SYSTEM_NOT_READY' };
+                }
+            },
+
+            // 获取系统状态
+            getStatus: function() {
+                return {
+                    success: true,
+                    data: {
+                        isLoaded: live2dManager ? live2dManager.isLoaded : false,
+                        version: '2.0.0',
+                        timestamp: Date.now()
+                    }
+                };
+            }
+        };
+
+        // ========== Python后端通信接口 ==========
+        
+        class Live2DAPIServer {
+            constructor() {
+                this.setupMessageListener();
+                this.setupHTTPEndpoint();
+                this.commandHistory = [];
+                this.maxHistorySize = 100;
+                
+                console.log('[Live2D API Server] 已启动，等待Python后端连接...');
+            }
+            
+            setupMessageListener() {
+                // 监听来自Python后端的postMessage
+                window.addEventListener('message', (event) => {
+                    this.handleMessage(event.data);
+                });
+                
+                // 监听自定义事件（用于跨窗口通信）
+                window.addEventListener('live2d-control', (event) => {
+                    this.handleMessage(event.detail);
+                });
+            }
+            
+            setupHTTPEndpoint() {
+                // 由于浏览器安全限制，我们无法创建真正的HTTP服务器
+                // 但我们可以通过轮询检查全局变量的方式来模拟HTTP接口
+                window.Live2DControlQueue = window.Live2DControlQueue || [];
+                
+                // 每100ms检查一次控制队列
+                setInterval(() => {
+                    if (window.Live2DControlQueue.length > 0) {
+                        const command = window.Live2DControlQueue.shift();
+                        this.handleMessage(command);
+                    }
+                }, 100);
+            }
+            
+            handleMessage(data) {
+                if (!data || typeof data !== 'object') {
+                    return;
+                }
+                
+                console.log('[Live2D API Server] 收到命令:', data);
+                
+                // 检查命令类型
+                if (data.type === 'live2d_control') {
+                    this.processLive2DCommand(data);
+                } else if (data.type === 'chat_message') {
+                    this.processChatMessage(data);
+                } else {
+                    console.warn('[Live2D API Server] 未知命令类型:', data.type);
+                }
+            }
+            
+            processLive2DCommand(command) {
+                let result = { success: false, message: '未知错误' };
+                
+                try {
+                    // 检查Live2D系统状态
+                    if (!window.Live2DAPI) {
+                        result = { success: false, message: 'Live2DAPI未初始化', error: 'API_NOT_READY' };
+                        this.logCommand(command, result);
+                        return;
+                    }
+                    
+                    // 处理动作命令
+                    if (command.action) {
+                        const actionResult = window.Live2DAPI.call('action', command.action);
+                        if (actionResult.success) {
+                            console.log(`[Live2D API Server] ✅ 执行动作: ${command.action}`);
+                        } else {
+                            console.error(`[Live2D API Server] ❌ 动作执行失败: ${command.action}`, actionResult);
+                        }
+                        result = actionResult;
+                    }
+                    
+                    // 处理表情命令  
+                    if (command.expression) {
+                        const expressionResult = window.Live2DAPI.call('expression', command.expression);
+                        if (expressionResult.success) {
+                            console.log(`[Live2D API Server] ✅ 执行表情: ${command.expression}`);
+                        } else {
+                            console.error(`[Live2D API Server] ❌ 表情执行失败: ${command.expression}`, expressionResult);
+                        }
+                        
+                        // 如果同时有动作和表情，合并结果
+                        if (command.action) {
+                            result.expressionResult = expressionResult;
+                        } else {
+                            result = expressionResult;
+                        }
+                    }
+                    
+                    // 记录成功的命令
+                    this.logCommand(command, result);
+                    
+                } catch (error) {
+                    result = { 
+                        success: false, 
+                        message: `命令执行异常: ${error.message}`,
+                        error: 'EXECUTION_EXCEPTION'
+                    };
+                    console.error('[Live2D API Server] 命令执行异常:', error);
+                    this.logCommand(command, result);
+                }
+            }
+            
+            processChatMessage(message) {
+                try {
+                    console.log('[Live2D API Server] 收到聊天消息:', message);
+                    
+                    // 验证消息格式
+                    if (!message.text || typeof message.text !== 'string') {
+                        console.error('[Live2D API Server] 聊天消息格式错误: 缺少文本内容');
+                        return;
+                    }
+                    
+                    // 确定发送者类型
+                    const sender = message.sender === 'user' ? 'user' : 'ai';
+                    
+                    // 调用前端聊天界面函数
+                    if (typeof window.addChatMessage === 'function') {
+                        window.addChatMessage(message.text, sender);
+                        console.log(`[Live2D API Server] ✅ 聊天消息显示成功: ${sender}`);
+                    } else {
+                        console.error('[Live2D API Server] ❌ addChatMessage函数未找到');
+                    }
+                    
+                    // 记录聊天消息统计
+                    this.stats = this.stats || {};
+                    this.stats.chatMessages = (this.stats.chatMessages || 0) + 1;
+                    this.stats[`${sender}Messages`] = (this.stats[`${sender}Messages`] || 0) + 1;
+                    
+                } catch (error) {
+                    console.error('[Live2D API Server] 聊天消息处理异常:', error);
+                }
+            }
+            
+            logCommand(command, result) {
+                const logEntry = {
+                    timestamp: new Date().toISOString(),
+                    command: command,
+                    result: result,
+                    success: result.success
+                };
+                
+                this.commandHistory.push(logEntry);
+                
+                // 保持历史记录大小限制
+                if (this.commandHistory.length > this.maxHistorySize) {
+                    this.commandHistory.shift();
+                }
+            }
+            
+            getCommandHistory() {
+                return this.commandHistory;
+            }
+            
+            getStats() {
+                const total = this.commandHistory.length;
+                const successful = this.commandHistory.filter(entry => entry.success).length;
+                const failed = total - successful;
+                
+                return {
+                    total_commands: total,
+                    successful_commands: successful,
+                    failed_commands: failed,
+                    success_rate: total > 0 ? (successful / total * 100).toFixed(2) + '%' : '0%',
+                    chat_messages: this.stats?.chatMessages || 0,
+                    ai_messages: this.stats?.aiMessages || 0,
+                    user_messages: this.stats?.userMessages || 0
+                };
+            }
+        }
+        
+        // 启动Live2D API服务器
+        let live2dAPIServer;
+        
+        // 等待页面加载完成后启动API服务器
+        document.addEventListener('DOMContentLoaded', () => {
+            live2dAPIServer = new Live2DAPIServer();
+
+            // 将API服务器暴露到全局作用域供调试使用
+            window.Live2DAPIServer = live2dAPIServer;
+
+            // 启动Live2D命令轮询
+            startLive2DCommandPolling();
+        });
+        
+        // Live2D命令轮询系统
+        function startLive2DCommandPolling() {
+            console.log('🔄 启动Live2D命令轮询...');
+
+            const pollLive2DCommands = async () => {
+                try {
+                    const response = await fetch('/api/poll_live2d');
+                    if (response.ok) {
+                        const result = await response.json();
+
+                        if (result.has_command && result.command) {
+                            console.log('🎭 收到Live2D命令:', result.command);
+
+                            // 使用Live2DAPIServer处理命令
+                            if (live2dAPIServer) {
+                                live2dAPIServer.handleMessage(result.command);
+                            } else {
+                                console.error('[Live2D Poll] API服务器未初始化');
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ Live2D命令轮询错误:', error);
+                }
+
+                // 继续轮询 (每500ms轮询一次)
+                setTimeout(pollLive2DCommands, 500);
+            };
+
+            // 开始轮询
+            setTimeout(pollLive2DCommands, 1000);
+        }
+
+        // 为Python后端提供的便捷接口
+        window.sendLive2DCommand = function(command) {
+            if (live2dAPIServer) {
+                live2dAPIServer.handleMessage({
+                    type: 'live2d_control',
+                    ...command
+                });
+                return true;
+            } else {
+                console.error('[Live2D] API服务器未初始化');
+                return false;
+            }
+        };
+
+        // 兼容原有的全局方法
+        function playTalk() {
+            if (live2dManager.isLoaded) {
+                return live2dManager.playTalk();
+            }
+        }
+
+        function playIdle() {
+            if (live2dManager.isLoaded) {
+                return live2dManager.playIdle();
+            }
+        }
+
+        // 打开动作播放器（自动连接版本）
+        function openMotionPlayer() {
+            // 打开新窗口并传递连接信息
+            const playerWindow = window.open('motion-player.html', 'MotionPlayer', 'width=1200,height=800');
+            
+            // 等待新窗口加载完成后自动建立连接
+            if (playerWindow) {
+                playerWindow.addEventListener('load', () => {
+                    // 直接传递live2dApp引用给新窗口
+                    if (live2dManager && live2dManager.isLoaded) {
+                        playerWindow.live2dApp = live2dManager;
+                        console.log('✓ 动作播放器自动连接成功');
+                    }
+                });
+                
+                // 确保连接成功的备用方法
+                setTimeout(() => {
+                    if (playerWindow && !playerWindow.closed && live2dManager) {
+                        playerWindow.live2dApp = live2dManager;
+                        if (playerWindow.updateStatus) {
+                            playerWindow.updateStatus('已自动连接到Live2D');
+                        }
+                    }
+                }, 1000);
+                
+                console.log('动作播放器窗口已打开');
+            } else {
+                alert('无法打开动作播放器窗口，请检查浏览器弹窗设置');
+            }
+        }
+
+        // ========== 应用初始化 ==========
+        let live2dManager;
+        let xiaozhiClient;
+
+        window.addEventListener('load', async () => {
             try {
-                window.live2dApp = new Live2DApp();
+                console.log('🚀 小智Live2D - 生产环境启动');
+                
+                // 初始化Live2D
+                live2dManager = new Live2DManager();
+                await live2dManager.init();
+                
+                // 将Live2D管理器暴露到全局，供动作播放器脚本使用
+                window.live2dApp = live2dManager;
+                
+                // 设置localStorage标记，表示Live2D已准备就绪
+                try {
+                    localStorage.setItem('live2d_status', 'ready');
+                } catch (e) {
+                    console.warn('无法设置localStorage标记');
+                }
+                
+                // 初始化小智AI客户端
+                xiaozhiClient = new XiaozhiAIClient();
+                
+                console.log('✅ 应用初始化完成');
+                
+                // 启用演示聊天消息 (可选 - 用于展示效果)
+                // addDemoMessages();
+                
             } catch (error) {
                 console.error('应用初始化失败:', error);
-                document.getElementById('loading-status').innerHTML = 
-                    `<div style="color: #dc3545;">初始化失败: ${error.message}</div>`;
-            }
-        };
-
-        // 暴露全局方法
-        window.playTalk = () => {
-            if (window.live2dApp && window.live2dApp.model) {
-                window.live2dApp.playTalk();
-            } else {
-                console.log('应用或模型未加载完成');
-            }
-        };
-
-        window.playIdle = () => {
-            if (window.live2dApp && window.live2dApp.model) {
-                window.live2dApp.playIdle();
-            } else {
-                console.log('应用或模型未加载完成');
-            }
-        };
-
-        // 页面卸载时清理资源
-        window.addEventListener('beforeunload', () => {
-            if (window.live2dApp && window.live2dApp.xiaozhiClient) {
-                window.live2dApp.xiaozhiClient.disconnect();
-            }
-            if (window.live2dApp) {
-                window.live2dApp.stopCurrentTTS();
+                showError('应用启动失败: ' + error.message);
             }
         });
+
+        // 错误处理
+        window.addEventListener('error', (event) => {
+            console.error('全局错误:', event.error);
+            showError('发生错误: ' + event.error.message);
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('未处理的Promise拒绝:', event.reason);
+            showError('异步操作失败: ' + event.reason.message);
+        });
     </script>
+
+    <!-- 固定召唤按钮 (当菜单折叠时显示) -->
+    <button class="summon-btn show" id="summon-btn" onclick="toggleControlPanel()" title="打开菜单">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+        </svg>
+    </button>
+
+    <!-- 聊天显示区域 -->
+    <div class="chat-area" id="chat-area">
+        <div class="chat-messages" id="chat-messages">
+            <!-- 欢迎消息 -->
+            <div class="message ai">
+                <div class="bubble">
+                    你好！我是小智，很高兴见到你！ 😊
+                </div>
+            </div>
+        </div>
+        
+        <!-- 正在输入指示器 -->
+        <div class="typing-indicator" id="typing-indicator">
+            <div class="bubble">
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部输入区域 -->
+    <div class="input-area" id="input-area">
+        <!-- 语音按钮区域 -->
+        <div class="voice-section">
+            <button class="voice-input-btn" id="voice-input-btn" onclick="toggleVoiceInput()" title="点击开始语音输入">
+                <!-- 麦克风图标 SVG -->
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" id="mic-icon">
+                    <path d="M12 1c-1.66 0-3 1.34-3 3v8c0 1.66 1.34 3 3 3s3-1.34 3-3V4c0-1.66-1.34-3-3-3zm0 18c-2.76 0-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V23h2v-2.08c3.39-.49 6-3.39 6-6.92h-2c0 2.76-2.24 5-5 5z"/>
+                </svg>
+                <!-- 录音图标 SVG (隐藏) -->
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" id="recording-icon" style="display: none;">
+                    <circle cx="12" cy="12" r="8"/>
+                </svg>
+            </button>
+        </div>
+        
+        <!-- 文字输入区域 -->
+        <div class="text-section">
+            <input type="text" class="text-input" id="text-input" placeholder="输入你想说的话..." 
+                   onkeypress="handleTextInput(event)">
+        </div>
+        
+        <!-- 发送按钮 -->
+        <button class="send-btn" id="send-btn" onclick="sendTextMessage()" title="发送消息">
+            <!-- 发送图标 SVG -->
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- 待机状态显示区域 -->
+    <div class="standby-status" id="standby-status" style="display: block;">
+        <div class="status-content">
+            <div class="status-icon">💤</div>
+            <span class="status-text">状态：待机中</span>
+            <button class="activate-btn" id="activate-btn" onclick="activateSystem()">激活</button>
+        </div>
+    </div>
 </body>
 </html>
-
-<!-- 
-========== 如何启动本地服务器 ==========
-
-方法1 - Python (推荐):
-    python -m http.server 8000
-    然后访问: http://localhost:8000/
-
-方法2 - Node.js:
-    npx http-server -p 8000
-    然后访问: http://localhost:8000/
-
-方法3 - VSCode Live Server:
-    安装 Live Server 插件 -> 右键 index.html -> "Open with Live Server"
-
-========== 为什么不能用 file:// ==========
-
-直接双击 HTML 文件会使用 file:// 协议，这会导致:
-- CORS 策略阻止加载本地资源 (.json, .moc3 文件)
-- 某些 Web API 在 file:// 下不可用
-- Live2D 模型无法正常加载
-
-========== 常见问题解决 ==========
-
-1. 404 错误:
-   - 检查文件路径大小写 (特别是 Linux/Mac 系统)
-   - 确保 Mould/ 文件夹和模型文件存在
-   - 确保 libs/live2dcubismcore.min.js 存在
-
-2. CORS 错误:
-   - 必须使用 HTTP 服务器，不能直接打开 HTML 文件
-   - 检查服务器是否正确运行
-
-3. 模型不显示:
-   - 打开浏览器控制台查看错误信息
-   - 检查 HEAD 请求返回状态码
-   - 确认所有脚本正确加载
-
-4. MIME 类型错误:
-   - 确保服务器支持 .json, .moc3 等文件类型
-   - Python 和 Node.js 的 http-server 通常自动处理
--->
