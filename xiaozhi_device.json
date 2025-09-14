@@ -1,9 +1,0 @@
-{
-  "device_id": "02:00:00:00:b7:aa",
-  "client_id": "a853e63d-798f-4564-8098-58f913efc510",
-  "serial": "SN-2FDFDDDD-02000000B7AA",
-  "hmac_key": "b24706e52bfed846bcf9b4116197c39be2e25116fdb7a2f6c7382c69204e10ea",
-  "activated": "true",
-  "websocket_url": "wss://api.tenclass.net/xiaozhi/v1/",
-  "websocket_token": "test-token"
-}

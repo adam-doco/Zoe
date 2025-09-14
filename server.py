@@ -22,10 +22,15 @@ live2d_command_queue = queue.Queue()
 
 # 导入消息处理器以获取系统状态
 try:
-    from simple_message_handler import global_handler
+    from robust_message_handler import global_handler
 except ImportError:
-    global_handler = None
-    print("⚠️ 无法导入simple_message_handler，激活功能将不可用")
+    # 如果robust版本不可用，回退到simple版本
+    try:
+        from simple_message_handler import global_handler
+        print("⚠️ 使用simple_message_handler，建议使用robust版本")
+    except ImportError:
+        global_handler = None
+        print("⚠️ 无法导入消息处理器，激活功能将不可用")
 
 class Live2DHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     """支持Live2D API的HTTP请求处理器"""
@@ -201,38 +206,45 @@ class Live2DHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def handle_poll_reply(self):
         """处理前端轮询AI回复"""
         try:
-            # 检查是否有AI回复
-            if not ai_reply_queue.empty():
-                reply = ai_reply_queue.get()
-                
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                
+            # 收集所有可用的AI回复
+            replies = []
+            max_replies = 10  # 限制一次最多获取10条回复，防止无限循环
+
+            for _ in range(max_replies):
+                if not ai_reply_queue.empty():
+                    try:
+                        reply = ai_reply_queue.get_nowait()
+                        replies.append(reply)
+                        print(f"[POLL] 获取AI回复: {reply.get('text', '')[:50]}...")
+                    except:
+                        break  # 队列为空时跳出
+                else:
+                    break
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+
+            if replies:
                 response = {
                     "status": "success",
                     "has_reply": True,
-                    "reply": reply,
+                    "replies": replies,  # 返回所有回复
+                    "count": len(replies),
                     "timestamp": time.time()
                 }
-                
-                print(f"[POLL] 发送AI回复到前端: {reply.get('text', '')[:50]}...")
+                print(f"[POLL] 发送{len(replies)}条AI回复到前端")
             else:
                 # 没有回复
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                
                 response = {
-                    "status": "success", 
+                    "status": "success",
                     "has_reply": False,
                     "timestamp": time.time()
                 }
-            
+
             self.wfile.write(json.dumps(response).encode('utf-8'))
-            
+
         except Exception as e:
             print(f"[POLL] 轮询回复错误: {e}")
             self.send_error(500, str(e))
