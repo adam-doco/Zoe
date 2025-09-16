@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>小智Live2D - 生产环境</title>
+    <!-- OPUS编码器库 -->
+    <script src="https://cdn.jsdelivr.net/npm/opus-encoder-js@latest/dist/opus-encoder.js"></script>
     <style>
         /* 基础样式 */
         * {
@@ -1469,9 +1471,10 @@
             
             // 音频配置
             audio: {
-                sampleRate: 16000,
-                channels: 1,
-                frameSize: 960
+                sampleRate: 16000,   // 小智AI强制要求
+                channels: 1,         // 单声道
+                frameSize: 960,      // 60ms @ 16kHz
+                frameDuration: 60    // 帧长60毫秒
             }
         };
 
@@ -2899,7 +2902,7 @@
                         format: 'opus',
                         sample_rate: XIAOZHI_CONFIG.audio.sampleRate,
                         channels: XIAOZHI_CONFIG.audio.channels,
-                        frame_duration: 60
+                        frame_duration: XIAOZHI_CONFIG.audio.frameDuration
                     }
                 };
                 
@@ -2927,6 +2930,9 @@
                         case 'stt':
                             this.handleSTTResult(message);
                             break;
+                        case 'listen':
+                            this.handleListenResponse(message);
+                            break;
                         case 'llm':
                             this.handleLLMResponse(message);
                             break;
@@ -2946,11 +2952,45 @@
             }
 
             handleSTTResult(message) {
-                console.log('STT结果:', message.text);
+                console.log('🎤 STT语音识别结果:', message.text);
                 this.updateStatus(`听到: ${message.text}`);
-                
+
+                // 显示识别结果
+                if (message.text && message.text.trim()) {
+                    console.log(`✅ 语音识别成功: "${message.text}"`);
+
+                    // 可以在这里添加语音识别结果的后续处理逻辑
+                    // 比如自动发送给AI进行对话处理
+
+                } else {
+                    console.log('⚠️ 语音识别结果为空');
+                }
+
                 if (live2dManager.isLoaded) {
                     live2dManager.playIdle();
+                }
+            }
+
+            handleListenResponse(message) {
+                console.log('👂 Listen监听状态响应:', message);
+
+                switch (message.state) {
+                    case 'start':
+                        console.log('✅ 服务端开始监听');
+                        this.updateStatus('服务端已开始监听...');
+                        break;
+                    case 'stop':
+                        console.log('✅ 服务端停止监听');
+                        this.updateStatus('服务端已停止监听');
+                        break;
+                    case 'detect':
+                        if (message.text) {
+                            console.log('✅ 检测到语音:', message.text);
+                            this.updateStatus(`检测到: ${message.text}`);
+                        }
+                        break;
+                    default:
+                        console.log('⚠️ 未知监听状态:', message.state);
                 }
             }
 
@@ -2987,13 +3027,27 @@
                     this.voiceBtn.className = 'btn recording';
                     this.updateStatus('正在录音...');
 
+                    // 发送开始监听消息
+                    const listenStartMessage = {
+                        session_id: this.sessionId || '',
+                        type: 'listen',
+                        state: 'start',
+                        mode: 'manual'  // 手动停止模式
+                    };
+
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify(listenStartMessage));
+                        console.log('🎤 发送开始监听消息:', listenStartMessage);
+                    }
+
                     // 获取麦克风权限
                     this.mediaStream = await navigator.mediaDevices.getUserMedia({
                         audio: {
                             sampleRate: XIAOZHI_CONFIG.audio.sampleRate,
                             channelCount: XIAOZHI_CONFIG.audio.channels,
                             echoCancellation: true,
-                            noiseSuppression: true
+                            noiseSuppression: true,
+                            autoGainControl: true  // 添加自动增益控制
                         }
                     });
 
@@ -3003,22 +3057,52 @@
                     });
 
                     const source = this.audioContext.createMediaStreamSource(this.mediaStream);
-                    
+
+                    // 初始化OPUS编码器
+                    try {
+                        this.opusEncoder = new OpusEncoder(XIAOZHI_CONFIG.audio.sampleRate, XIAOZHI_CONFIG.audio.channels, {
+                            frameSize: XIAOZHI_CONFIG.audio.frameSize / XIAOZHI_CONFIG.audio.sampleRate * 1000, // 转换为毫秒
+                            bitrate: 64000  // 64kbps比特率，适合语音
+                        });
+                        console.log('✅ OPUS编码器初始化成功');
+                    } catch (error) {
+                        console.error('❌ OPUS编码器初始化失败:', error);
+                        // 回退到PCM格式
+                        this.opusEncoder = null;
+                    }
+
                     // 创建音频处理节点
                     this.processor = this.audioContext.createScriptProcessor(XIAOZHI_CONFIG.audio.frameSize, 1, 1);
-                    
+
                     this.processor.onaudioprocess = (event) => {
                         const inputData = event.inputBuffer.getChannelData(0);
-                        const pcmData = new Int16Array(inputData.length);
-                        
-                        // 转换为16位PCM
-                        for (let i = 0; i < inputData.length; i++) {
-                            pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
-                        }
-                        
-                        // 发送音频数据
-                        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                            this.ws.send(pcmData.buffer);
+
+                        // 音频预处理
+                        const processedData = this.preprocessAudio(inputData);
+
+                        if (this.opusEncoder) {
+                            try {
+                                // 转换为16位PCM用于OPUS编码
+                                const pcmData = new Int16Array(processedData.length);
+                                for (let i = 0; i < processedData.length; i++) {
+                                    pcmData[i] = Math.max(-32768, Math.min(32767, processedData[i] * 32768));
+                                }
+
+                                // OPUS编码
+                                const opusData = this.opusEncoder.encode(pcmData);
+
+                                // 发送OPUS音频数据
+                                if (this.ws && this.ws.readyState === WebSocket.OPEN && opusData) {
+                                    this.ws.send(opusData);
+                                }
+                            } catch (error) {
+                                console.error('OPUS编码失败:', error);
+                                // 回退到PCM
+                                this.sendPCMAudio(processedData);
+                            }
+                        } else {
+                            // 回退到PCM格式
+                            this.sendPCMAudio(processedData);
                         }
                     };
 
@@ -3034,12 +3118,105 @@
                 }
             }
 
+            // 音频预处理函数
+            preprocessAudio(inputData) {
+                // 1. 预加重滤波器(提高高频清晰度)
+                const preemphasized = this.preemphasisFilter(inputData, 0.95);
+
+                // 2. 自动增益控制
+                const gainControlled = this.autoGainControl(preemphasized, 0.3);
+
+                // 3. 简单的噪声门阀处理
+                const noiseGated = this.simpleNoiseGate(gainControlled, 0.01);
+
+                return noiseGated;
+            }
+
+            // 预加重滤波器
+            preemphasisFilter(signal, alpha = 0.95) {
+                const filtered = new Float32Array(signal.length);
+                filtered[0] = signal[0];
+                for (let i = 1; i < signal.length; i++) {
+                    filtered[i] = signal[i] - alpha * signal[i - 1];
+                }
+                return filtered;
+            }
+
+            // 自动增益控制
+            autoGainControl(audioData, targetLevel = 0.3) {
+                const maxValue = Math.max(...audioData.map(Math.abs));
+                if (maxValue === 0) return audioData;
+
+                const gainFactor = targetLevel / maxValue;
+                const controlled = new Float32Array(audioData.length);
+
+                for (let i = 0; i < audioData.length; i++) {
+                    controlled[i] = audioData[i] * gainFactor;
+                }
+
+                return controlled;
+            }
+
+            // 简单噪声门阀
+            simpleNoiseGate(audioData, threshold = 0.01) {
+                const energy = audioData.reduce((sum, sample) => sum + sample * sample, 0) / audioData.length;
+                const rms = Math.sqrt(energy);
+
+                if (rms < threshold) {
+                    // 噪声门阀生效，输出静音
+                    return new Float32Array(audioData.length);
+                }
+
+                return audioData;
+            }
+
+            // PCM音频发送回退方案
+            sendPCMAudio(processedData) {
+                const pcmData = new Int16Array(processedData.length);
+
+                // 转换为16位PCM并添加抖动
+                for (let i = 0; i < processedData.length; i++) {
+                    const dither = (Math.random() - 0.5) * 2; // 矩形抖动
+                    pcmData[i] = Math.max(-32768, Math.min(32767,
+                        (processedData[i] * 32768) + dither
+                    ));
+                }
+
+                // 发送PCM音频数据
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(pcmData.buffer);
+                }
+            }
+
             stopRecording() {
                 if (!this.isRecording) return;
 
                 this.isRecording = false;
                 this.voiceBtn.className = 'btn';
                 this.updateStatus('处理中...');
+
+                // 发送停止监听消息
+                const listenStopMessage = {
+                    session_id: this.sessionId || '',
+                    type: 'listen',
+                    state: 'stop'
+                };
+
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify(listenStopMessage));
+                    console.log('🛑 发送停止监听消息:', listenStopMessage);
+                }
+
+                // 清理OPUS编码器
+                if (this.opusEncoder) {
+                    try {
+                        this.opusEncoder.destroy();
+                        this.opusEncoder = null;
+                        console.log('✅ OPUS编码器已销毁');
+                    } catch (error) {
+                        console.error('OPUS编码器销毁失败:', error);
+                    }
+                }
 
                 // 清理音频资源
                 if (this.processor) {
@@ -3057,7 +3234,7 @@
                     this.mediaStream = null;
                 }
 
-                // 发送录音结束信号
+                // 保留原有的audio_end消息（向后兼容）
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                     this.ws.send(JSON.stringify({ type: 'audio_end', session_id: this.sessionId }));
                 }
