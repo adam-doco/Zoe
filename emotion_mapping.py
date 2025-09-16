@@ -32,43 +32,48 @@ class EmotionMapping:
     def __init__(self):
         """初始化情感映射表"""
         
-        # 核心情感映射 - 基于xiaozhi.py中可能出现的情感类型
+        # 核心情感映射 - 基于小智AI标准emoji的21种情感类型
         self.emotion_map: Dict[str, Live2DActionConfig] = {
-            
-            # === 积极情感 ===
+
+            # === 小智AI标准emoji映射 ===
+
+            # 😶 - neutral
+            "neutral": Live2DActionConfig(
+                action="idle",
+                expression=None,
+                duration=2.0,
+                priority=1,
+                description="中性平静的状态"
+            ),
+
+            # 🙂 - happy
             "happy": Live2DActionConfig(
                 action="kaixin",
-                expression="love_eyes", 
+                expression="love_eyes",
                 duration=4.0,
                 priority=2,
                 description="开心快乐的状态"
             ),
-            
-            "joy": Live2DActionConfig(
+
+            # 😆 - laughing
+            "laughing": Live2DActionConfig(
                 action="kaixin",
                 expression="star_eyes",
+                duration=4.0,
+                priority=2,
+                description="大笑开怀的状态"
+            ),
+
+            # 😂 - funny
+            "funny": Live2DActionConfig(
+                action="kaixin",
+                expression="tongue",
                 duration=3.5,
                 priority=2,
-                description="喜悦兴奋的状态"
+                description="搞笑幽默的状态"
             ),
-            
-            "excited": Live2DActionConfig(
-                action="kaixin",
-                expression="star_eyes",
-                duration=3.0,
-                priority=2,
-                description="兴奋激动的状态"
-            ),
-            
-            "love": Live2DActionConfig(
-                action="kaixin",
-                expression="love_eyes",
-                duration=4.5,
-                priority=3,
-                description="爱意满满的状态"
-            ),
-            
-            # === 消极情感 ===
+
+            # 😔 - sad
             "sad": Live2DActionConfig(
                 action="idle",
                 expression="crying",
@@ -76,32 +81,44 @@ class EmotionMapping:
                 priority=2,
                 description="悲伤难过的状态"
             ),
-            
+
+            # 😠 - angry
             "angry": Live2DActionConfig(
-                action="shengqi", 
+                action="shengqi",
                 expression="angry",
                 duration=3.5,
                 priority=3,
                 description="生气愤怒的状态"
             ),
-            
-            "disappointed": Live2DActionConfig(
+
+            # 😭 - crying
+            "crying": Live2DActionConfig(
                 action="idle",
                 expression="crying",
-                duration=3.0,
-                priority=2,
-                description="失望沮丧的状态"
+                duration=4.5,
+                priority=3,
+                description="哭泣痛苦的状态"
             ),
-            
-            "worried": Live2DActionConfig(
+
+            # 😍 - loving
+            "loving": Live2DActionConfig(
+                action="kaixin",
+                expression="love_eyes",
+                duration=4.5,
+                priority=3,
+                description="爱意满满的状态"
+            ),
+
+            # 😳 - embarrassed
+            "embarrassed": Live2DActionConfig(
                 action="yaotou",
                 expression=None,
-                duration=2.5,
+                duration=3.0,
                 priority=2,
-                description="担心忧虑的状态"
+                description="尴尬害羞的状态"
             ),
-            
-            # === 惊讶反应 ===
+
+            # 😲 - surprised
             "surprised": Live2DActionConfig(
                 action="jingya",
                 expression="star_eyes",
@@ -109,15 +126,148 @@ class EmotionMapping:
                 priority=3,
                 description="惊讶意外的状态"
             ),
-            
+
+            # 😱 - shocked
             "shocked": Live2DActionConfig(
                 action="jingya",
-                expression="star_eyes",
+                expression=None,
                 duration=3.0,
                 priority=3,
                 description="震惊的状态"
             ),
-            
+
+            # 🤔 - thinking
+            "thinking": Live2DActionConfig(
+                action="idle",
+                expression=None,
+                duration=3.0,
+                priority=1,
+                description="思考中的状态"
+            ),
+
+            # 😉 - winking
+            "winking": Live2DActionConfig(
+                action="wink",
+                expression="tongue",
+                duration=2.5,
+                priority=2,
+                description="眨眼调皮的状态"
+            ),
+
+            # 😎 - cool
+            "cool": Live2DActionConfig(
+                action="wink",
+                expression=None,
+                duration=3.0,
+                priority=2,
+                description="酷炫自信的状态"
+            ),
+
+            # 😌 - relaxed
+            "relaxed": Live2DActionConfig(
+                action="idle",
+                expression=None,
+                duration=3.5,
+                priority=1,
+                description="放松舒缓的状态"
+            ),
+
+            # 🤤 - delicious
+            "delicious": Live2DActionConfig(
+                action="kaixin",
+                expression="tongue",
+                duration=3.0,
+                priority=2,
+                description="美味享受的状态"
+            ),
+
+            # 😘 - kissy
+            "kissy": Live2DActionConfig(
+                action="kaixin",
+                expression="love_eyes",
+                duration=3.5,
+                priority=2,
+                description="飞吻示爱的状态"
+            ),
+
+            # 😏 - confident
+            "confident": Live2DActionConfig(
+                action="wink",
+                expression=None,
+                duration=3.0,
+                priority=2,
+                description="自信得意的状态"
+            ),
+
+            # 😴 - sleepy
+            "sleepy": Live2DActionConfig(
+                action="idle",
+                expression=None,
+                duration=4.0,
+                priority=1,
+                description="困倦疲惫的状态"
+            ),
+
+            # 😜 - silly
+            "silly": Live2DActionConfig(
+                action="wink",
+                expression="tongue",
+                duration=2.5,
+                priority=2,
+                description="调皮搞怪的状态"
+            ),
+
+            # 🙄 - confused
+            "confused": Live2DActionConfig(
+                action="yaotou",
+                expression=None,
+                duration=2.5,
+                priority=2,
+                description="困惑疑惑的状态"
+            ),
+
+            # === 兼容旧版映射 ===
+            "joy": Live2DActionConfig(
+                action="kaixin",
+                expression="star_eyes",
+                duration=3.5,
+                priority=2,
+                description="喜悦兴奋的状态"
+            ),
+
+            "excited": Live2DActionConfig(
+                action="kaixin",
+                expression="star_eyes",
+                duration=3.0,
+                priority=2,
+                description="兴奋激动的状态"
+            ),
+
+            "love": Live2DActionConfig(
+                action="kaixin",
+                expression="love_eyes",
+                duration=4.5,
+                priority=3,
+                description="爱意满满的状态"
+            ),
+
+            # === 扩展兼容映射（保持向后兼容） ===
+            "disappointed": Live2DActionConfig(
+                action="idle",
+                expression="crying",
+                duration=3.0,
+                priority=2,
+                description="失望沮丧的状态"
+            ),
+
+            "worried": Live2DActionConfig(
+                action="yaotou",
+                expression=None,
+                duration=2.5,
+                priority=2,
+                description="担心忧虑的状态"
+            ),
+
             "amazed": Live2DActionConfig(
                 action="jingya",
                 expression="star_eyes",
@@ -125,13 +275,52 @@ class EmotionMapping:
                 priority=2,
                 description="惊叹赞叹的状态"
             ),
-            
-            # === 中性状态 ===
-            "neutral": Live2DActionConfig(
+
+            "calm": Live2DActionConfig(
                 action="idle",
                 expression=None,
-                duration=2.0,
+                duration=2.5,
                 priority=1,
+                description="冷静平和的状态"
+            ),
+
+            "playful": Live2DActionConfig(
+                action="wink",
+                expression="tongue",
+                duration=2.5,
+                priority=2,
+                description="顽皮搞怪的状态"
+            ),
+
+            "mischievous": Live2DActionConfig(
+                action="wink",
+                expression="tongue",
+                duration=3.0,
+                priority=2,
+                description="淘气调皮的状态"
+            ),
+
+            "speaking": Live2DActionConfig(
+                action="talk",
+                expression=None,
+                duration=5.0,  # 说话状态持续时间较长
+                priority=3,    # 高优先级
+                description="正在说话的状态"
+            ),
+
+            "greeting": Live2DActionConfig(
+                action="kaixin",
+                expression="love_eyes",
+                duration=3.0,
+                priority=2,
+                description="打招呼问候的状态"
+            ),
+
+            "farewell": Live2DActionConfig(
+                action="yaotou",
+                expression=None,
+                duration=2.5,
+                priority=2,
                 description="中性平静的状态"
             ),
             

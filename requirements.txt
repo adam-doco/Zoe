@@ -1,0 +1,27 @@
+# Live2D小智AI系统Python依赖包
+# 使用方法: pip install -r requirements.txt
+
+# 核心依赖
+websockets>=11.0.3
+aiohttp>=3.8.5
+requests>=2.31.0
+
+# Web服务器
+gunicorn>=21.2.0
+flask>=2.3.3
+
+# 系统监控
+psutil>=5.9.5
+
+# 数据处理
+urllib3>=2.0.4
+certifi>=2023.7.22
+
+# 可选依赖 (音频处理)
+# pyaudio>=0.2.11
+# pydub>=0.25.1
+
+# 开发依赖 (可选)
+# pytest>=7.4.0
+# black>=23.7.0
+# flake8>=6.0.0
