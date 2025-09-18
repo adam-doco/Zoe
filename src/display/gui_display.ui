@@ -7,233 +7,745 @@
     <x>0</x>
     <y>0</y>
     <width>800</width>
-    <height>500</height>
+    <height>800</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>小智Ai客户端</string>
+   <string>PocketSpeak</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout">
-
-   <item>
-         <widget class="QFrame" name="status_card">
-      <property name="sizePolicy">
-       <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-        <horstretch>0</horstretch>
-        <verstretch>0</verstretch>
-       </sizepolicy>
+  <!-- 主容器：Live2D显示区域（全宽度） -->
+  <widget class="QFrame" name="live2d_card">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>800</width>
+     <height>800</height>
+    </rect>
+   </property>
+   <property name="frameShape">
+    <enum>QFrame::NoFrame</enum>
+   </property>
+   <property name="frameShadow">
+    <enum>QFrame::Plain</enum>
+   </property>
+   <layout class="QVBoxLayout" name="live2d_layout">
+    <property name="spacing">
+     <number>0</number>
+    </property>
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
+    <item>
+     <widget class="QLabel" name="emotion_label">
+      <property name="font">
+       <font>
+        <pointsize>48</pointsize>
+       </font>
       </property>
-      <property name="frameShape">
-       <enum>QFrame::NoFrame</enum>
-      </property>
-      <property name="frameShadow">
-       <enum>QFrame::Plain</enum>
-      </property>
-     <layout class="QVBoxLayout" name="card_layout">
-      <item>
-       <widget class="QLabel" name="status_label">
-        <property name="font">
-         <font>
-          <pointsize>14</pointsize>
-          <weight>75</weight>
-          <bold>true</bold>
-         </font>
-        </property>
-        <property name="styleSheet">
-         <string>
-QLabel {
-    color: #2196F3;
-    padding: 12px 20px;
-    background-color: #E3F2FD;
-    border-radius: 12px;
-    border: none;
-    margin: 10px;
-}
-         </string>
-        </property>
-        <property name="text">
-         <string>状态: 未连接</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignCenter</set>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="emotion_label">
-        <property name="font">
-         <font>
-          <pointsize>48</pointsize>
-         </font>
-        </property>
-        <property name="styleSheet">
-         <string>
+      <property name="styleSheet">
+       <string>
 QLabel {
     margin: 20px;
     padding: 20px;
     background-color: transparent;
     border: none;
 }
-         </string>
-        </property>
-        <property name="text">
-         <string>😊</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignCenter</set>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="tts_text_label">
-        <property name="font">
-         <font>
-          <pointsize>14</pointsize>
-         </font>
-        </property>
-        <property name="styleSheet">
-         <string>
+       </string>
+      </property>
+      <property name="text">
+       <string>😊</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignCenter</set>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="tts_text_label">
+      <property name="visible">
+       <bool>false</bool>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>16777215</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="font">
+       <font>
+        <pointsize>14</pointsize>
+       </font>
+      </property>
+      <property name="styleSheet">
+       <string>
 QLabel {
     color: #555555;
-    padding: 15px 20px;
+    padding: 0px;
     background-color: transparent;
     border: none;
-    margin: 5px 15px;
+    margin: 0px;
 }
-         </string>
-        </property>
-        <property name="text">
-         <string>待命</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignCenter</set>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="button_layout">
-     <property name="spacing">
-      <number>8</number>
-     </property>
-     <property name="leftMargin">
-      <number>10</number>
-     </property>
-     <property name="rightMargin">
-      <number>10</number>
-     </property>
-     <property name="bottomMargin">
-      <number>10</number>
-     </property>
-     <item>
-      <widget class="QPushButton" name="manual_btn">
-       <property name="minimumSize">
-        <size>
-         <width>0</width>
-         <height>36</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>按住后说话</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="abort_btn">
-       <property name="minimumSize">
-        <size>
-         <width>0</width>
-         <height>36</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>打断对话</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <layout class="QHBoxLayout" name="text_input_layout">
-       <property name="spacing">
-        <number>4</number>
-       </property>
-       <item>
-        <widget class="QLineEdit" name="text_input">
-         <property name="minimumSize">
-          <size>
-           <width>0</width>
-           <height>36</height>
-          </size>
-         </property>
-         <property name="placeholderText">
-          <string>输入文字...</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="send_btn">
-         <property name="minimumSize">
-          <size>
-           <width>60</width>
-           <height>36</height>
-          </size>
-         </property>
-         <property name="text">
-          <string>发送</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </item>
-     <item>
-      <widget class="QPushButton" name="auto_btn">
-       <property name="minimumSize">
-        <size>
-         <width>0</width>
-         <height>36</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>开始对话</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="mode_btn">
-       <property name="minimumSize">
-        <size>
-         <width>0</width>
-         <height>36</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>手动对话</string>
-       </property>
-      </widget>
-     </item>
-      <item>
-       <widget class="QPushButton" name="settings_btn">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>36</height>
-         </size>
-        </property>
-        <property name="text">
-         <string>参数配置</string>
-        </property>
-        <property name="toolTip">
-         <string>打开设置（Ctrl+,）</string>
-        </property>
-       </widget>
-      </item>
-    </layout>
-   </item>
-  </layout>
+       </string>
+      </property>
+      <property name="text">
+       <string></string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignCenter</set>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+
+  <!-- 表情测试按钮区域（右侧） - 隐藏状态 -->
+  <widget class="QFrame" name="emotion_test_panel">
+   <property name="geometry">
+    <rect>
+     <x>600</x>
+     <y>0</y>
+     <width>200</width>
+     <height>800</height>
+    </rect>
+   </property>
+   <property name="visible">
+    <bool>false</bool>
+   </property>
+   <property name="styleSheet">
+    <string>
+QFrame {
+    background-color: rgba(248, 249, 250, 0.95);
+    border-left: 1px solid rgba(0, 0, 0, 0.1);
+}
+QPushButton {
+    background-color: #007bff;
+    color: white;
+    border: 1px solid #007bff;
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 10px;
+    margin: 1px;
+}
+QPushButton:hover {
+    background-color: #0056b3;
+}
+QPushButton:pressed {
+    background-color: #004085;
+}
+QLabel {
+    color: #333;
+    font-weight: bold;
+    font-size: 11px;
+    margin: 5px 0 2px 0;
+}
+    </string>
+   </property>
+   <layout class="QVBoxLayout" name="emotion_panel_layout">
+    <property name="spacing">
+     <number>2</number>
+    </property>
+    <property name="leftMargin">
+     <number>8</number>
+    </property>
+    <property name="rightMargin">
+     <number>8</number>
+    </property>
+    <property name="topMargin">
+     <number>10</number>
+    </property>
+    <property name="bottomMargin">
+     <number>10</number>
+    </property>
+
+    <item>
+     <widget class="QLabel" name="emotion_title">
+      <property name="text">
+       <string>🎭 表情测试</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignCenter</set>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QLabel" name="basic_emotions_label">
+      <property name="text">
+       <string>😊 基础情感</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_happy">
+      <property name="text">
+       <string>😊 开心</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_sad">
+      <property name="text">
+       <string>😔 悲伤</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_angry">
+      <property name="text">
+       <string>😠 生气</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_surprised">
+      <property name="text">
+       <string>😲 惊讶</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_thinking">
+      <property name="text">
+       <string>🤔 思考</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_loving">
+      <property name="text">
+       <string>😍 喜爱</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QLabel" name="advanced_emotions_label">
+      <property name="text">
+       <string>🎯 高级情感</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_laughing">
+      <property name="text">
+       <string>😆 大笑</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_crying">
+      <property name="text">
+       <string>😭 哭泣</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_winking">
+      <property name="text">
+       <string>😉 眨眼</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_cool">
+      <property name="text">
+       <string>😎 酷炫</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_embarrassed">
+      <property name="text">
+       <string>😳 尴尬</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_sleepy">
+      <property name="text">
+       <string>😴 困倦</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_shocked">
+      <property name="text">
+       <string>😱 震惊</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_relaxed">
+      <property name="text">
+       <string>😌 放松</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_delicious">
+      <property name="text">
+       <string>🤤 美味</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_confident">
+      <property name="text">
+       <string>😏 自信</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QLabel" name="special_emotions_label">
+      <property name="text">
+       <string>🎪 特殊情感</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_funny">
+      <property name="text">
+       <string>😂 搞笑</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_silly">
+      <property name="text">
+       <string>😜 调皮</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_kissy">
+      <property name="text">
+       <string>😘 飞吻</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_confused">
+      <property name="text">
+       <string>🙄 困惑</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_neutral">
+      <property name="text">
+       <string>😶 中性</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QLabel" name="control_label">
+      <property name="text">
+       <string>🔧 控制</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QPushButton" name="btn_reset">
+      <property name="text">
+       <string>🔄 重置</string>
+      </property>
+     </widget>
+    </item>
+
+    <item>
+     <spacer name="emotion_spacer">
+      <property name="orientation">
+       <enum>Qt::Vertical</enum>
+      </property>
+      <property name="sizeHint" stdset="0">
+       <size>
+        <width>20</width>
+        <height>40</height>
+       </size>
+      </property>
+     </spacer>
+    </item>
+
+   </layout>
+  </widget>
+
+  <!-- 右上角控制区域 -->
+  <widget class="QFrame" name="top_right_controls">
+   <property name="geometry">
+    <rect>
+     <x>600</x>
+     <y>5</y>
+     <width>190</width>
+     <height>35</height>
+    </rect>
+   </property>
+   <property name="styleSheet">
+    <string>
+QFrame {
+    background-color: transparent;
+    border: none;
+}
+QPushButton {
+    background-color: rgba(255, 255, 255, 0.8);
+    color: #666666;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 16px;
+    font-size: 12px;
+    padding: 8px 16px;
+    font-weight: 500;
+    margin: 2px;
+}
+QPushButton:hover {
+    background-color: rgba(255, 255, 255, 0.95);
+    color: #333333;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+}
+QPushButton:pressed {
+    background-color: rgba(240, 240, 240, 0.95);
+    transform: translateY(1px);
+}
+    </string>
+   </property>
+   <layout class="QHBoxLayout" name="top_controls_layout">
+    <property name="spacing">
+     <number>8</number>
+    </property>
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
+    <item>
+     <widget class="QPushButton" name="mode_btn">
+      <property name="minimumSize">
+       <size>
+        <width>80</width>
+        <height>32</height>
+       </size>
+      </property>
+      <property name="text">
+       <string>手动对话</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QPushButton" name="settings_btn">
+      <property name="minimumSize">
+       <size>
+        <width>80</width>
+        <height>32</height>
+       </size>
+      </property>
+      <property name="text">
+       <string>⚙️ 配置</string>
+      </property>
+      <property name="toolTip">
+       <string>打开设置（Ctrl+,）</string>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+
+  <!-- 打断按钮（左下角） -->
+  <widget class="QPushButton" name="abort_btn">
+   <property name="geometry">
+    <rect>
+     <x>140</x>
+     <y>722</y>
+     <width>42</width>
+     <height>42</height>
+    </rect>
+   </property>
+   <property name="styleSheet">
+    <string>
+QPushButton {
+    background-color: #FFB3BA;
+    color: #8B0000;
+    border: none;
+    border-radius: 16px;
+    font-size: 16px;
+    font-weight: 500;
+}
+QPushButton:hover {
+    background-color: #FFA0A7;
+    transform: scale(1.05);
+}
+QPushButton:pressed {
+    background-color: #FF8A94;
+    transform: scale(0.95);
+}
+    </string>
+   </property>
+   <property name="text">
+    <string>⏹</string>
+   </property>
+  </widget>
+
+  <!-- 主输入区域 -->
+  <widget class="QFrame" name="main_input_area">
+   <property name="geometry">
+    <rect>
+     <x>196</x>
+     <y>715</y>
+     <width>414</width>
+     <height>42</height>
+    </rect>
+   </property>
+   <property name="styleSheet">
+    <string>
+QFrame {
+    background-color: rgba(255, 255, 255, 0.95);
+    border: none;
+    border-radius: 21px;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+    </string>
+   </property>
+   <layout class="QHBoxLayout" name="main_input_layout">
+    <property name="spacing">
+     <number>4</number>
+    </property>
+    <property name="leftMargin">
+     <number>16</number>
+    </property>
+    <property name="rightMargin">
+     <number>16</number>
+    </property>
+    <property name="topMargin">
+     <number>4</number>
+    </property>
+    <property name="bottomMargin">
+     <number>4</number>
+    </property>
+    <property name="sizeConstraint">
+     <enum>QLayout::SetFixedSize</enum>
+    </property>
+    <item>
+     <widget class="QPushButton" name="manual_btn">
+      <property name="minimumSize">
+       <size>
+        <width>42</width>
+        <height>42</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>42</width>
+        <height>42</height>
+       </size>
+      </property>
+      <property name="styleSheet">
+       <string>
+QPushButton {
+    background-color: #B8E6B8;
+    color: #2E7D2E;
+    border: none;
+    border-radius: 16px;
+    font-size: 16px;
+    font-weight: 500;
+}
+QPushButton:hover {
+    background-color: #A8D8A8;
+    transform: scale(1.05);
+}
+QPushButton:pressed {
+    background-color: #98C798;
+    transform: scale(0.95);
+}
+       </string>
+      </property>
+      <property name="text">
+       <string>🎤</string>
+      </property>
+      <property name="checkable">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLineEdit" name="text_input">
+      <property name="minimumSize">
+       <size>
+        <width>300</width>
+        <height>42</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>350</width>
+        <height>42</height>
+       </size>
+      </property>
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="styleSheet">
+       <string>
+QLineEdit {
+    background-color: transparent;
+    border: none;
+    font-size: 14px;
+    padding: 12px 16px;
+    color: #333333;
+}
+QLineEdit:focus {
+    background-color: transparent;
+    border: none;
+}
+QLineEdit::placeholder {
+    color: #999999;
+    font-style: italic;
+}
+       </string>
+      </property>
+      <property name="placeholderText">
+       <string>输入文字消息...</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QPushButton" name="send_btn">
+      <property name="minimumSize">
+       <size>
+        <width>42</width>
+        <height>42</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>42</width>
+        <height>42</height>
+       </size>
+      </property>
+      <property name="styleSheet">
+       <string>
+QPushButton {
+    background-color: #BFCFFF;
+    color: #1E3A8A;
+    border: none;
+    border-radius: 16px;
+    font-size: 16px;
+    font-weight: 500;
+}
+QPushButton:hover {
+    background-color: #A5B8FF;
+    transform: scale(1.05);
+}
+QPushButton:pressed {
+    background-color: #8BA2FF;
+    transform: scale(0.95);
+}
+       </string>
+      </property>
+      <property name="text">
+       <string>➤</string>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+
+  <!-- 隐藏的auto_btn，保持兼容性 -->
+  <widget class="QPushButton" name="auto_btn">
+   <property name="geometry">
+    <rect>
+     <x>720</x>
+     <y>730</y>
+     <width>70</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="visible">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>开始对话</string>
+   </property>
+  </widget>
+
+  <!-- 悬浮状态显示区域 -->
+  <widget class="QLabel" name="status_label">
+   <property name="geometry">
+    <rect>
+     <x>5</x>
+     <y>5</y>
+     <width>200</width>
+     <height>25</height>
+    </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+     <weight>50</weight>
+     <bold>false</bold>
+    </font>
+   </property>
+   <property name="styleSheet">
+    <string>
+QLabel {
+    color: #666666;
+    padding: 2px 8px;
+    background-color: rgba(245, 245, 245, 0.9);
+    border-radius: 4px;
+    border: none;
+}
+    </string>
+   </property>
+   <property name="text">
+    <string>状态: 未连接</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignCenter</set>
+   </property>
+  </widget>
  </widget>
  <resources/>
  <connections/>

@@ -2,6 +2,22 @@ import argparse
 import asyncio
 import sys
 
+# 必须在导入PyQt5之前设置WebEngine属性
+import os
+os.environ['QT_LOGGING_RULES'] = "qt.qpa.fonts.debug=false"
+
+# 设置Qt属性以支持WebEngine
+try:
+    from PyQt5.QtCore import QCoreApplication, Qt
+    from PyQt5.QtWidgets import QApplication
+    # 在创建QApplication前设置必要的属性
+    QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
+    # 确保WebEngine模块被正确初始化
+    import PyQt5.QtWebEngineWidgets
+except ImportError:
+    # 如果没有PyQtWebEngine，忽略这些设置
+    pass
+
 from src.application import Application
 from src.utils.logging_config import get_logger, setup_logging
 

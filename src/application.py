@@ -16,6 +16,7 @@ from src.utils.common_utils import handle_verification_code
 from src.utils.config_manager import ConfigManager
 from src.utils.logging_config import get_logger
 from src.utils.opus_loader import setup_opus
+from src.utils.emotion_debugger import get_emotion_debugger
 
 logger = get_logger(__name__)
 
@@ -139,6 +140,9 @@ class Application:
         # MCP服务器
         self.mcp_server = McpServer.get_instance()
 
+        # 表情调试器
+        self.emotion_debugger = get_emotion_debugger()
+
         # 消息处理器映射
         self._message_handlers = {
             "tts": self._handle_tts_message,
@@ -151,6 +155,7 @@ class Application:
         # 并发控制锁 - 将在_initialize_async_objects中初始化
         self._state_lock = None
         self._abort_lock = None
+        self._emotion_lock = None  # 表情处理锁，防止并发冲突
 
         # 音频与发送并发限制（避免任务风暴）
         try:
@@ -221,6 +226,7 @@ class Application:
         # 初始化异步锁
         self._state_lock = asyncio.Lock()
         self._abort_lock = asyncio.Lock()
+        self._emotion_lock = asyncio.Lock()  # 表情处理并发控制
 
         # 初始化中止事件
         self.aborted_event = asyncio.Event()
@@ -1147,11 +1153,173 @@ class Application:
 
     async def _handle_llm_message(self, data):
         """
-        处理LLM消息.
+        处理LLM消息，支持emoji和emotion双重触发.
         """
+        # 优先处理emoji数据（小智AI返回的原始emoji）
+        emoji = data.get("emoji", "")
+        if emoji:
+            logger.info(f"🎭 收到小智AI emoji数据: {emoji}")
+            self.emotion_debugger.log_emotion_received(emoji, "emoji")
+            await self._process_emotion_data(emoji_data=emoji)
+            return
+
+        # 兼容现有的emotion字段
         emotion = data.get("emotion", "")
         if emotion:
-            self.set_emotion(emotion)
+            logger.info(f"🎭 收到小智AI emotion数据: {emotion}")
+            self.emotion_debugger.log_emotion_received(emotion, "emotion")
+            await self._process_emotion_data(emotion_name=emotion)
+            return
+
+        # 智能解析消息文本中的emoji（备用方案）
+        text = data.get("text", "")
+        if text:
+            detected_emoji = self._extract_emoji_from_text(text)
+            if detected_emoji:
+                logger.info(f"🎭 从文本中提取到emoji: {detected_emoji}")
+                self.emotion_debugger.log_emotion_received(detected_emoji, "text")
+                await self._process_emotion_data(emoji_data=detected_emoji)
+
+    async def _process_emotion_data(self, emoji_data=None, emotion_name=None):
+        """
+        统一处理表情数据，支持emoji和emotion名称，包含并发控制.
+        """
+        if not self._emotion_lock:
+            logger.warning("情感处理锁未初始化，跳过处理")
+            return
+
+        async with self._emotion_lock:  # 使用锁防止并发冲突
+            try:
+                start_time = asyncio.get_event_loop().time()
+
+                if emoji_data:
+                    # 从emoji映射到表情名称
+                    from src.emotion_mapping import emotion_mapping
+                    mapped_emotion = self._map_emoji_to_emotion(emoji_data)
+                    if mapped_emotion:
+                        mapping_time = asyncio.get_event_loop().time() - start_time
+                        self.emotion_debugger.log_emotion_mapped(emoji_data, mapped_emotion, mapping_time * 1000)
+
+                        self.set_emotion(mapped_emotion)
+                        processing_time = asyncio.get_event_loop().time() - start_time
+                        self.emotion_debugger.log_emotion_triggered(mapped_emotion, processing_time * 1000, True)
+                        logger.info(f"✅ emoji处理完成: {emoji_data} → {mapped_emotion} (耗时: {processing_time:.3f}s)")
+                    else:
+                        logger.warning(f"⚠️ 未识别的emoji: {emoji_data}")
+                        self.emotion_debugger.log_emotion_error(emoji_data, "未识别的emoji")
+                        self.set_emotion("neutral")  # 回退到默认表情
+
+                elif emotion_name:
+                    # 直接使用emotion名称
+                    self.set_emotion(emotion_name)
+                    processing_time = asyncio.get_event_loop().time() - start_time
+                    self.emotion_debugger.log_emotion_triggered(emotion_name, processing_time * 1000, True)
+                    logger.info(f"✅ emotion处理完成: {emotion_name} (耗时: {processing_time:.3f}s)")
+
+                else:
+                    logger.warning("⚠️ 表情数据为空，使用默认表情")
+                    self.emotion_debugger.log_emotion_error("empty_data", "表情数据为空")
+                    self.set_emotion("neutral")
+
+            except Exception as e:
+                processing_time = asyncio.get_event_loop().time() - start_time
+                error_msg = str(e)
+                source_data = emoji_data or emotion_name or "unknown"
+
+                logger.error(f"❌ 处理表情数据失败: {e}", exc_info=True)
+                self.emotion_debugger.log_emotion_error(source_data, error_msg, processing_time * 1000)
+
+                try:
+                    self.set_emotion("neutral")  # 错误时回退到默认表情
+                    logger.info("🔄 已回退到默认表情: neutral")
+                except Exception as fallback_error:
+                    logger.error(f"❌ 设置默认表情也失败: {fallback_error}")
+                    self.emotion_debugger.log_emotion_error("neutral", f"回退失败: {fallback_error}")
+
+    def _map_emoji_to_emotion(self, emoji):
+        """
+        将emoji映射到表情名称，基于小智AI标准21种emoji.
+        """
+        # 小智AI标准emoji到表情名称的映射
+        emoji_to_emotion_map = {
+            "😶": "neutral",    # 中性
+            "🙂": "happy",      # 开心
+            "😆": "laughing",   # 大笑
+            "😂": "funny",      # 搞笑
+            "😔": "sad",        # 悲伤
+            "😠": "angry",      # 生气
+            "😭": "crying",     # 哭泣
+            "😍": "loving",     # 喜爱
+            "😳": "embarrassed", # 尴尬
+            "😲": "surprised",  # 惊讶
+            "😱": "shocked",    # 震惊
+            "🤔": "thinking",   # 思考
+            "😉": "winking",    # 眨眼
+            "😎": "cool",       # 酷炫
+            "😌": "relaxed",    # 放松
+            "🤤": "delicious",  # 美味
+            "😘": "kissy",      # 飞吻
+            "😏": "confident",  # 自信
+            "😴": "sleepy",     # 困倦
+            "😜": "silly",      # 调皮
+            "🙄": "confused"    # 困惑
+        }
+
+        return emoji_to_emotion_map.get(emoji, None)
+
+    def _extract_emoji_from_text(self, text):
+        """
+        从文本中提取emoji字符（智能备用方案）.
+        """
+        import re
+        # Unicode emoji范围的正则表达式
+        emoji_pattern = re.compile(
+            "["
+            "\U0001F600-\U0001F64F"  # emoticons
+            "\U0001F300-\U0001F5FF"  # symbols & pictographs
+            "\U0001F680-\U0001F6FF"  # transport & map symbols
+            "\U0001F1E0-\U0001F1FF"  # flags (iOS)
+            "\U00002500-\U00002BEF"  # chinese char
+            "\U00002702-\U000027B0"
+            "\U00002702-\U000027B0"
+            "\U000024C2-\U0001F251"
+            "\U0001f926-\U0001f937"
+            "\U00010000-\U0010ffff"
+            "\u2640-\u2642"
+            "\u2600-\u2B55"
+            "\u200d"
+            "\u23cf"
+            "\u23e9"
+            "\u231a"
+            "\ufe0f"  # dingbats
+            "\u3030"
+            "]+", flags=re.UNICODE)
+
+        emojis = emoji_pattern.findall(text)
+        return emojis[0] if emojis else None
+
+    def print_emotion_debug_report(self):
+        """打印表情系统调试报告"""
+        if self.emotion_debugger:
+            self.emotion_debugger.print_debug_report()
+        else:
+            logger.warning("表情调试器未初始化")
+
+    def export_emotion_debug_data(self, filename: str = None):
+        """导出表情调试数据"""
+        if not filename:
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"emotion_debug_{timestamp}.json"
+
+        if self.emotion_debugger:
+            success = self.emotion_debugger.export_events_to_json(filename)
+            if success:
+                logger.info(f"✅ 表情调试数据导出成功: {filename}")
+            else:
+                logger.error(f"❌ 表情调试数据导出失败: {filename}")
+        else:
+            logger.warning("表情调试器未初始化")
 
     async def _on_audio_channel_opened(self):
         """

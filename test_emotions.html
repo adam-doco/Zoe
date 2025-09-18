@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zoev3 Live2D 表情测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .button-group {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .button-group h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        button {
+            margin: 5px;
+            padding: 8px 15px;
+            border: 1px solid #007bff;
+            background-color: #007bff;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .test-results {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #28a745;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+        .log {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .iframe-container {
+            margin: 20px 0;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            height: 400px;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎭 Zoev3 Live2D 表情和动作测试</h1>
+
+    <div class="iframe-container">
+        <iframe id="live2dFrame" src="src/display/live2d/index.html"></iframe>
+    </div>
+
+    <div class="button-group">
+        <h3>😊 小智AI标准Emoji测试</h3>
+        <button onclick="testEmoji('😶')">😶 neutral</button>
+        <button onclick="testEmoji('🙂')">🙂 happy</button>
+        <button onclick="testEmoji('😆')">😆 laughing</button>
+        <button onclick="testEmoji('😂')">😂 funny</button>
+        <button onclick="testEmoji('😔')">😔 sad</button>
+        <button onclick="testEmoji('😠')">😠 angry</button>
+        <button onclick="testEmoji('😭')">😭 crying</button>
+        <button onclick="testEmoji('😍')">😍 loving</button>
+        <button onclick="testEmoji('😳')">😳 embarrassed</button>
+        <button onclick="testEmoji('😲')">😲 surprised</button>
+        <button onclick="testEmoji('😱')">😱 shocked</button>
+    </div>
+
+    <div class="button-group">
+        <h3>🎯 更多Emoji测试</h3>
+        <button onclick="testEmoji('🤔')">🤔 thinking</button>
+        <button onclick="testEmoji('😉')">😉 winking</button>
+        <button onclick="testEmoji('😎')">😎 cool</button>
+        <button onclick="testEmoji('😌')">😌 relaxed</button>
+        <button onclick="testEmoji('🤤')">🤤 delicious</button>
+        <button onclick="testEmoji('😘')">😘 kissy</button>
+        <button onclick="testEmoji('😏')">😏 confident</button>
+        <button onclick="testEmoji('😴')">😴 sleepy</button>
+        <button onclick="testEmoji('😜')">😜 silly</button>
+        <button onclick="testEmoji('🙄')">🙄 confused</button>
+    </div>
+
+    <div class="button-group">
+        <h3>🔄 情感名称测试</h3>
+        <button onclick="testEmotion('happy')">Happy</button>
+        <button onclick="testEmotion('sad')">Sad</button>
+        <button onclick="testEmotion('angry')">Angry</button>
+        <button onclick="testEmotion('surprised')">Surprised</button>
+        <button onclick="testEmotion('thinking')">Thinking</button>
+        <button onclick="testEmotion('loving')">Loving</button>
+        <button onclick="testEmotion('neutral')">Neutral</button>
+    </div>
+
+    <div class="button-group">
+        <h3>🧪 模拟小智AI数据测试</h3>
+        <button onclick="simulateAIResponse('😊', 'happy')">模拟开心回复</button>
+        <button onclick="simulateAIResponse('😔', 'sad')">模拟悲伤回复</button>
+        <button onclick="simulateAIResponse('😠', 'angry')">模拟生气回复</button>
+        <button onclick="simulateAIResponse('😲', 'surprised')">模拟惊讶回复</button>
+        <button onclick="clearLogs()">清空日志</button>
+    </div>
+
+    <div class="test-results">
+        <h3>📊 测试结果</h3>
+        <div id="testLogs"></div>
+    </div>
+
+    <script>
+        function log(message) {
+            const logDiv = document.getElementById('testLogs');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            console.log(message);
+        }
+
+        function testEmoji(emoji) {
+            log(`🎯 测试Emoji: ${emoji}`);
+
+            const iframe = document.getElementById('live2dFrame');
+            if (iframe && iframe.contentWindow) {
+                try {
+                    // 直接调用iframe中的全局函数
+                    if (iframe.contentWindow.playEmoji) {
+                        iframe.contentWindow.playEmoji(emoji);
+                        log(`✅ Emoji ${emoji} 发送成功`);
+                    } else {
+                        log(`❌ iframe中playEmoji函数不可用`);
+                    }
+                } catch (error) {
+                    log(`❌ 调用失败: ${error.message}`);
+                }
+            } else {
+                log(`❌ iframe不可用`);
+            }
+        }
+
+        function testEmotion(emotion) {
+            log(`🎭 测试情感: ${emotion}`);
+
+            const iframe = document.getElementById('live2dFrame');
+            if (iframe && iframe.contentWindow) {
+                try {
+                    if (iframe.contentWindow.playEmotion) {
+                        iframe.contentWindow.playEmotion(emotion);
+                        log(`✅ 情感 ${emotion} 发送成功`);
+                    } else {
+                        log(`❌ iframe中playEmotion函数不可用`);
+                    }
+                } catch (error) {
+                    log(`❌ 调用失败: ${error.message}`);
+                }
+            } else {
+                log(`❌ iframe不可用`);
+            }
+        }
+
+        function simulateAIResponse(emoji, emotion) {
+            log(`🤖 模拟小智AI回复: emoji=${emoji}, emotion=${emotion}`);
+
+            const data = {
+                type: "llm",
+                text: emoji,
+                emotion: emotion
+            };
+
+            const iframe = document.getElementById('live2dFrame');
+            if (iframe && iframe.contentWindow) {
+                try {
+                    // 模拟发送消息事件
+                    iframe.contentWindow.postMessage({
+                        type: 'emotion',
+                        emoji: emoji,
+                        emotion: emotion,
+                        data: data
+                    }, '*');
+                    log(`✅ 模拟数据发送成功: ${JSON.stringify(data)}`);
+                } catch (error) {
+                    log(`❌ 模拟发送失败: ${error.message}`);
+                }
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('testLogs').innerHTML = '';
+            log(`🧹 日志已清空`);
+        }
+
+        // 页面加载完成后检查iframe状态
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                log(`🔍 检查Live2D iframe状态...`);
+                const iframe = document.getElementById('live2dFrame');
+                if (iframe && iframe.contentWindow) {
+                    log(`✅ iframe已加载`);
+
+                    // 等待Live2D初始化完成
+                    setTimeout(() => {
+                        if (iframe.contentWindow.live2dController) {
+                            log(`✅ Live2D控制器已就绪`);
+                        } else {
+                            log(`⚠️ Live2D控制器未就绪，请等待模型加载完成`);
+                        }
+                    }, 3000);
+                } else {
+                    log(`❌ iframe未加载`);
+                }
+            }, 1000);
+        });
+
+        // 监听来自iframe的消息
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'live2d_ready') {
+                log(`✅ Live2D已准备就绪`);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live2D Zoe - PyQt Integration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: transparent;
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #live2d-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #666;
+            font-size: 14px;
+            z-index: 10;
+        }
+
+        .error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff6b6b;
+            font-size: 14px;
+            text-align: center;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading">正在加载Live2D模型...</div>
+    <div id="error" class="error" style="display: none;">Live2D模型加载失败</div>
+    <canvas id="live2d-canvas"></canvas>
+
+    <script>
+        class Live2DController {
+            constructor() {
+                this.app = null;
+                this.model = null;
+                this.isLoaded = false;
+                this.loadingElement = document.getElementById('loading');
+                this.errorElement = document.getElementById('error');
+            }
+
+            async init() {
+                try {
+                    console.log('开始初始化Live2D...');
+                    await this.loadScripts();
+                    await this.initPixiApp();
+                    await this.loadModel();
+                    this.hideLoading();
+                    this.isLoaded = true;
+                    console.log('✓ Live2D初始化完成');
+
+                    // 启动情感监听
+                    this.listenForEmotions();
+
+                    // 暴露控制器到全局，供PyQt调用
+                    window.live2dController = this;
+                } catch (error) {
+                    console.error('Live2D初始化失败:', error);
+                    this.showError();
+                }
+            }
+
+            async loadScripts() {
+                console.log('开始加载Live2D脚本...');
+                const scripts = [
+                    'https://unpkg.com/pixi.js@7.3.2/dist/pixi.min.js',
+                    'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js'
+                ];
+
+                for (const src of scripts) {
+                    await this.loadScript(src);
+                }
+
+                // 设置PIXI全局变量
+                window.PIXI = PIXI;
+
+                // 加载Live2D显示库
+                await this.loadScript('https://unpkg.com/pixi-live2d-display@0.4.0/dist/cubism4.min.js');
+                console.log('✓ 所有脚本加载完成');
+            }
+
+            loadScript(src) {
+                return new Promise((resolve, reject) => {
+                    console.log(`正在加载脚本: ${src}`);
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.onload = () => {
+                        console.log(`✓ 脚本加载成功: ${src}`);
+                        resolve();
+                    };
+                    script.onerror = () => {
+                        console.error(`✗ 脚本加载失败: ${src}`);
+                        reject(new Error(`脚本加载失败: ${src}`));
+                    };
+                    document.head.appendChild(script);
+                });
+            }
+
+            async initPixiApp() {
+                // 初始化PIXI应用 - 参考Zoev2的配置
+                this.app = new PIXI.Application({
+                    view: document.getElementById('live2d-canvas'),
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    backgroundColor: 0x000000,
+                    backgroundAlpha: 0,
+                    antialias: true,
+                    preserveDrawingBuffer: false,
+                    resolution: window.devicePixelRatio || 1,
+                    autoDensity: true
+                });
+
+                console.log('✓ PIXI应用初始化完成');
+
+                // 监听窗口大小变化
+                window.addEventListener('resize', () => {
+                    this.app.renderer.resize(window.innerWidth, window.innerHeight);
+                    if (this.model) {
+                        this.positionModel();
+                    }
+                });
+            }
+
+            async loadModel() {
+                try {
+                    console.log('正在加载Live2D模型...');
+
+                    // 使用与Zoev2相同的API调用方式
+                    this.model = await PIXI.live2d.Live2DModel.from('models/Mould/Z.model3.json');
+                    this.app.stage.addChild(this.model);
+
+                    console.log('✓ 模型添加到舞台');
+
+                    // 设置模型位置和大小
+                    this.positionModel();
+
+                    // 启动默认动作
+                    await this.model.motion('Idle');
+
+                    console.log('✓ Live2D模型加载完成');
+                } catch (error) {
+                    console.error('模型加载失败:', error);
+                    console.error('错误详情:', {
+                        message: error.message,
+                        stack: error.stack,
+                        pixiLive2dAvailable: typeof PIXI !== 'undefined' ? typeof PIXI.live2d : 'undefined',
+                        modelPath: 'models/Mould/Z.model3.json'
+                    });
+                    throw error;
+                }
+            }
+
+            positionModel() {
+                if (!this.model) return;
+
+                // 等待模型完全加载并获取正确尺寸，最多重试5次
+                if (!this.positionRetryCount) this.positionRetryCount = 0;
+
+                if ((!this.model.width || !this.model.height || this.model.width < 10 || this.model.height < 10) && this.positionRetryCount < 5) {
+                    console.log(`🔄 模型尺寸未准备好，延迟定位... (第${this.positionRetryCount + 1}次)`);
+                    this.positionRetryCount++;
+                    setTimeout(() => this.positionModel(), 200);
+                    return;
+                }
+
+                // 如果重试5次后仍然无法获取尺寸，使用默认缩放
+                if (!this.model.width || !this.model.height || this.model.width < 10 || this.model.height < 10) {
+                    console.log('⚠️ 无法获取模型尺寸，使用默认缩放 0.5');
+                    this.model.scale.set(0.5);
+                    this.model.x = window.innerWidth / 2;
+                    this.model.y = window.innerHeight / 2;
+                    this.positionRetryCount = 0;
+                    return;
+                }
+
+                // 计算缩放比例（增加Live2D显示区域后调整比例）
+                const scale = Math.min(
+                    window.innerWidth / this.model.width,
+                    window.innerHeight / this.model.height
+                ) * 0.9;
+
+                // 防止异常缩放
+                const finalScale = Math.max(0.1, Math.min(2.0, scale));
+                console.log(`📐 模型定位: 窗口${window.innerWidth}x${window.innerHeight}, 模型${this.model.width}x${this.model.height}, 缩放${finalScale}`);
+
+                // 应用缩放
+                this.model.scale.set(finalScale);
+
+                // 居中显示 - 确保模型在画面中心
+                this.model.x = window.innerWidth / 2;
+                this.model.y = window.innerHeight / 2;
+
+                // 设置锚点为中心
+                this.model.anchor.set(0.5, 0.5);
+
+                this.positionRetryCount = 0;
+                console.log(`✅ 模型定位完成: 位置(${this.model.x}, ${this.model.y}), 缩放${finalScale}`);
+            }
+
+            hideLoading() {
+                if (this.loadingElement) {
+                    this.loadingElement.style.display = 'none';
+                }
+            }
+
+            showError() {
+                if (this.loadingElement) {
+                    this.loadingElement.style.display = 'none';
+                }
+                if (this.errorElement) {
+                    this.errorElement.style.display = 'block';
+                }
+            }
+
+            // 表情切换方法 - 基于Zoev2的完整映射系统
+            async changeExpression(emotionName) {
+                if (!this.model || !this.isLoaded) {
+                    console.warn('模型未加载完成，无法切换表情');
+                    return;
+                }
+
+                console.log('🎭 切换表情:', emotionName);
+
+                // 完整的21个emoji到Live2D动作/表情映射（正确的索引调用方式）
+                const emotionMapping = {
+                    // === 小智AI标准21个emoji映射到6个动作+7个表情 ===
+
+                    // 动作索引0: Idle (待机) - 5个emoji
+                    "neutral": { motionIndex: 0, expression: null }, // 😶 中性
+                    "thinking": { motionIndex: 0, expression: null }, // 🤔 思考
+                    "relaxed": { motionIndex: 0, expression: null }, // 😌 放松
+                    "sleepy": { motionIndex: 0, expression: null }, // 😴 困倦
+                    "embarrassed": { motionIndex: 0, expression: "A4哭哭" }, // 😳 尴尬
+
+                    // 动作索引1: jingya (惊讶) - 3个emoji
+                    "surprised": { motionIndex: 1, expression: "A3星星眼" }, // 😲 惊讶
+                    "shocked": { motionIndex: 1, expression: "A3星星眼" }, // 😱 震惊
+                    "cool": { motionIndex: 1, expression: "A3星星眼" }, // 😎 酷炫
+
+                    // 动作索引2: kaixin (开心) - 7个emoji
+                    "happy": { motionIndex: 2, expression: "A1爱心眼" }, // 🙂 开心
+                    "laughing": { motionIndex: 2, expression: "A3星星眼" }, // 😆 大笑
+                    "funny": { motionIndex: 2, expression: "舌头" }, // 😂 搞笑
+                    "loving": { motionIndex: 2, expression: "A1爱心眼" }, // 😍 喜爱
+                    "delicious": { motionIndex: 2, expression: "舌头" }, // 🤤 美味
+                    "confident": { motionIndex: 2, expression: "A3星星眼" }, // 😏 自信
+                    "kissy": { motionIndex: 2, expression: "A1爱心眼" }, // 😘 飞吻
+
+                    // 动作索引3: shengqi (生气) - 1个emoji
+                    "angry": { motionIndex: 3, expression: "A2生气" }, // 😠 生气
+
+                    // 动作索引4: wink (眨眼) - 2个emoji
+                    "winking": { motionIndex: 4, expression: null }, // 😉 眨眼
+                    "silly": { motionIndex: 4, expression: "舌头" }, // 😜 调皮
+
+                    // 动作索引5: yaotou (摇头) - 3个emoji
+                    "sad": { motionIndex: 5, expression: "A4哭哭" }, // 😔 悲伤
+                    "crying": { motionIndex: 5, expression: "A4哭哭" }, // 😭 哭泣
+                    "confused": { motionIndex: 5, expression: null }, // 🙄 困惑
+
+                    // 特殊功能表情
+                    "speaking": { motionIndex: 0, expression: "B1麦克风" } // 说话时使用麦克风表情
+                };
+
+                // 获取映射配置，默认为Idle待机
+                const config = emotionMapping[emotionName] || { motionIndex: 0, expression: null };
+
+                try {
+                    // 播放动作（使用正确的索引方式）
+                    console.log(`🎬 播放动作索引: ${config.motionIndex}`);
+                    await this.model.motion("", config.motionIndex);
+
+                    // 如果有表情，播放表情
+                    if (config.expression) {
+                        console.log(`😊 播放表情: ${config.expression}`);
+                        try {
+                            await this.model.expression(config.expression);
+                            console.log(`✅ 表情 ${config.expression} 播放成功`);
+                        } catch (expError) {
+                            console.error(`⚠️ 表情 ${config.expression} 播放失败:`, expError);
+                        }
+                    }
+
+                    console.log(`✅ 表情组合 ${emotionName} 播放完成（动作索引${config.motionIndex}）`);
+                } catch (error) {
+                    console.error(`❌ 表情 ${emotionName} 播放失败:`, error);
+                }
+            }
+
+            // 根据emoji播放对应表情
+            playEmotionByEmoji(emoji) {
+                const emojiMapping = {
+                    "😶": "neutral",
+                    "🙂": "happy",
+                    "😆": "laughing",
+                    "😂": "funny",
+                    "😔": "sad",
+                    "😠": "angry",
+                    "😭": "crying",
+                    "😍": "loving",
+                    "😳": "embarrassed",
+                    "😲": "surprised",
+                    "😱": "shocked",
+                    "🤔": "thinking",
+                    "😉": "winking",
+                    "😎": "cool",
+                    "😌": "relaxed",
+                    "🤤": "delicious",
+                    "😘": "kissy",
+                    "😏": "confident",
+                    "😴": "sleepy",
+                    "😜": "silly",
+                    "🙄": "confused"
+                };
+
+                const emotionName = emojiMapping[emoji];
+                if (emotionName) {
+                    console.log(`🎯 Emoji ${emoji} → ${emotionName}`);
+                    this.changeExpression(emotionName);
+                } else {
+                    console.warn(`⚠️ 未知emoji: ${emoji}`);
+                }
+            }
+
+            // 监听小智AI的情感数据
+            listenForEmotions() {
+                console.log('🎧 开始监听小智AI情感数据...');
+
+                // 监听来自PyQt的情感消息
+                window.addEventListener('message', (event) => {
+                    if (event.data && event.data.type === 'emotion') {
+                        console.log('📨 收到情感数据:', event.data);
+
+                        if (event.data.emoji) {
+                            this.playEmotionByEmoji(event.data.emoji);
+                        } else if (event.data.emotion) {
+                            this.changeExpression(event.data.emotion);
+                        }
+                    }
+                });
+
+                // 也可以通过全局函数被PyQt调用
+                window.playEmotion = (emotion) => {
+                    console.log('🎪 外部调用播放表情:', emotion);
+                    this.changeExpression(emotion);
+                };
+
+                window.playEmoji = (emoji) => {
+                    console.log('🎪 外部调用播放emoji:', emoji);
+                    this.playEmotionByEmoji(emoji);
+                };
+            }
+
+            // 检查模型是否加载完成
+            isModelLoaded() {
+                return this.isLoaded;
+            }
+        }
+
+        // 页面加载完成后初始化
+        window.addEventListener('DOMContentLoaded', () => {
+            const controller = new Live2DController();
+            controller.init();
+        });
+    </script>
+</body>
+</html>

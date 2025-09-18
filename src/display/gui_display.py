@@ -3,7 +3,7 @@ from abc import ABCMeta
 from pathlib import Path
 from typing import Callable, Optional
 
-from PyQt5.QtCore import QObject, Qt
+from PyQt5.QtCore import QObject, Qt, QUrl
 from PyQt5.QtGui import QFont, QKeySequence, QMovie, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
@@ -13,6 +13,7 @@ from PyQt5.QtWidgets import (
     QSizePolicy,
     QWidget,
 )
+from PyQt5.QtWebEngineWidgets import QWebEngineView
 
 from src.display.base_display import BaseDisplay
 from src.utils.resource_finder import find_assets_dir
@@ -32,7 +33,8 @@ class GuiDisplay(BaseDisplay, QObject, metaclass=CombinedMeta):
 
         # UI控件
         self.status_label = None
-        self.emotion_label = None
+        self.emotion_label = None  # 保留作为降级方案
+        self.live2d_view = None    # Live2D WebEngine视图
         self.tts_text_label = None
         self.manual_btn = None
         self.abort_btn = None
@@ -52,6 +54,10 @@ class GuiDisplay(BaseDisplay, QObject, metaclass=CombinedMeta):
         self.current_status = ""
         self.is_connected = True
 
+        # Live2D状态管理
+        self.live2d_loaded = False
+        self.use_live2d = True  # 是否启用Live2D
+
         # 回调函数
         self.button_press_callback = None
         self.button_release_callback = None
@@ -62,6 +68,9 @@ class GuiDisplay(BaseDisplay, QObject, metaclass=CombinedMeta):
 
         # 系统托盘组件
         self.system_tray = None
+
+        # 表情监听器（无损入侵式设计）
+        self._emotion_listener = None
 
     async def set_callbacks(
         self,
@@ -89,7 +98,24 @@ class GuiDisplay(BaseDisplay, QObject, metaclass=CombinedMeta):
         手动模式按钮按下事件处理.
         """
         if self.manual_btn and self.manual_btn.isVisible():
-            self.manual_btn.setText("松开以停止")
+            # 录音状态：改为红色圆点，表示正在录音
+            self.manual_btn.setText("🔴")
+            self.manual_btn.setStyleSheet("""
+QPushButton {
+    background-color: #FF4444;
+    color: white;
+    border: none;
+    border-radius: 16px;
+    font-size: 14px;
+    font-weight: 500;
+}
+QPushButton:hover {
+    background-color: #FF2222;
+}
+QPushButton:pressed {
+    background-color: #DD0000;
+}
+            """)
         if self.button_press_callback:
             self.button_press_callback()
 
@@ -98,7 +124,24 @@ class GuiDisplay(BaseDisplay, QObject, metaclass=CombinedMeta):
         手动模式按钮释放事件处理.
         """
         if self.manual_btn and self.manual_btn.isVisible():
-            self.manual_btn.setText("按住后说话")
+            # 恢复正常状态：绿色麦克风图标
+            self.manual_btn.setText("🎤")
+            self.manual_btn.setStyleSheet("""
+QPushButton {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 16px;
+    font-size: 14px;
+    font-weight: 500;
+}
+QPushButton:hover {
+    background-color: #45A049;
+}
+QPushButton:pressed {
+    background-color: #FF4444;
+}
+            """)
         if self.button_release_callback:
             self.button_release_callback()
 
@@ -178,19 +221,129 @@ class GuiDisplay(BaseDisplay, QObject, metaclass=CombinedMeta):
 
     async def update_emotion(self, emotion_name: str):
         """
-        更新表情显示.
+        更新表情显示，支持emotion名称和emoji字符.
         """
-        if emotion_name == self._last_emotion_name:
+        if not emotion_name:
+            emotion_name = "neutral"
+
+        # 检查是否是emoji字符，如果是则转换为emotion名称
+        processed_emotion = self._process_emotion_input(emotion_name)
+
+        # 防重复触发
+        if processed_emotion == self._last_emotion_name:
+            self.logger.debug(f"表情未变化，跳过更新: {processed_emotion}")
             return
 
-        self._last_emotion_name = emotion_name
-        asset_path = self._get_emotion_asset_path(emotion_name)
+        self._last_emotion_name = processed_emotion
+        self.logger.info(f"🎭 开始更新表情: {emotion_name} → {processed_emotion}")
 
-        if self.emotion_label:
+        # 优先使用Live2D，失败时回退到emoji
+        if self.use_live2d and self.live2d_view:
             try:
-                self._set_emotion_asset(self.emotion_label, asset_path)
+                # 调用Live2D表情切换（支持emoji输入）
+                script = f"""
+                if(window.live2dController && window.live2dController.isModelLoaded()) {{
+                    if ('{emotion_name}' !== '{processed_emotion}') {{
+                        // 如果输入是emoji，使用emoji播放方法
+                        window.live2dController.playEmotionByEmoji('{emotion_name}');
+                    }} else {{
+                        // 如果输入是emotion名称，使用标准方法
+                        window.live2dController.changeExpression('{processed_emotion}');
+                    }}
+                }}
+                """
+                self.live2d_view.page().runJavaScript(script)
+                self.logger.debug(f"✅ Live2D表情切换成功: {emotion_name} → {processed_emotion}")
             except Exception as e:
-                self.logger.error(f"设置表情GIF时发生错误: {str(e)}")
+                self.logger.error(f"❌ Live2D表情切换失败: {e}")
+                self._fallback_to_emoji()
+                # 回退到emoji显示
+                asset_path = self._get_emotion_asset_path(processed_emotion)
+                if self.emotion_label:
+                    self._set_emotion_asset(self.emotion_label, asset_path)
+        else:
+            # 使用emoji显示
+            asset_path = self._get_emotion_asset_path(processed_emotion)
+            if self.emotion_label:
+                try:
+                    self._set_emotion_asset(self.emotion_label, asset_path)
+                    self.logger.debug(f"✅ Emoji表情设置成功: {processed_emotion}")
+                except Exception as e:
+                    self.logger.error(f"❌ 设置表情GIF时发生错误: {str(e)}")
+
+    def _process_emotion_input(self, input_emotion: str) -> str:
+        """
+        处理表情输入，支持emoji字符和emotion名称.
+
+        Args:
+            input_emotion: 输入的表情（可能是emoji字符或emotion名称）
+
+        Returns:
+            str: 处理后的标准emotion名称
+        """
+        if not input_emotion:
+            return "neutral"
+
+        # 检查是否是emoji字符
+        if self._is_emoji(input_emotion):
+            # 使用情感映射系统转换emoji
+            try:
+                from src.emotion_mapping import emotion_mapping
+                converted = emotion_mapping.get_emotion_from_emoji(input_emotion)
+                self.logger.debug(f"🔄 emoji转换: {input_emotion} → {converted}")
+                return converted
+            except Exception as e:
+                self.logger.error(f"❌ emoji转换失败: {e}")
+                return "neutral"
+        else:
+            # 直接返回emotion名称（已经是标准格式）
+            return input_emotion.lower().strip()
+
+    def _is_emoji(self, text: str) -> bool:
+        """
+        判断文本是否是emoji字符.
+
+        Args:
+            text: 待检查的文本
+
+        Returns:
+            bool: 是否是emoji字符
+        """
+        import re
+
+        # 小智AI标准emoji列表
+        xiaozhi_emojis = {
+            "😶", "🙂", "😆", "😂", "😔", "😠", "😭", "😍", "😳", "😲",
+            "😱", "🤔", "😉", "😎", "😌", "🤤", "😘", "😏", "😴", "😜", "🙄"
+        }
+
+        # 首先检查是否是小智AI标准emoji
+        if text.strip() in xiaozhi_emojis:
+            return True
+
+        # 通用emoji检测
+        emoji_pattern = re.compile(
+            "["
+            "\U0001F600-\U0001F64F"  # emoticons
+            "\U0001F300-\U0001F5FF"  # symbols & pictographs
+            "\U0001F680-\U0001F6FF"  # transport & map symbols
+            "\U0001F1E0-\U0001F1FF"  # flags
+            "\U00002500-\U00002BEF"  # chinese char
+            "\U00002702-\U000027B0"
+            "\U000024C2-\U0001F251"
+            "\U0001f926-\U0001f937"
+            "\U00010000-\U0010ffff"
+            "\u2640-\u2642"
+            "\u2600-\u2B55"
+            "\u200d"
+            "\u23cf"
+            "\u23e9"
+            "\u231a"
+            "\ufe0f"
+            "\u3030"
+            "]+", flags=re.UNICODE)
+
+        return bool(emoji_pattern.match(text.strip()))
 
     def _get_emotion_asset_path(self, emotion_name: str) -> str:
         """
@@ -375,6 +528,9 @@ class GuiDisplay(BaseDisplay, QObject, metaclass=CombinedMeta):
             # 初始化系统托盘
             self._setup_system_tray()
 
+            # 安装小智AI表情监听器（无损入侵）
+            self._setup_emotion_listener()
+
             # 设置默认表情
             await self._set_default_emotion()
 
@@ -418,6 +574,68 @@ class GuiDisplay(BaseDisplay, QObject, metaclass=CombinedMeta):
         self.text_input = self.root.findChild(QLineEdit, "text_input")
         self.send_btn = self.root.findChild(QPushButton, "send_btn")
 
+        # 初始化Live2D视图
+        self._init_live2d_view()
+
+        # 初始化表情测试按钮
+        self._init_emotion_test_buttons()
+
+    def _init_live2d_view(self):
+        """
+        初始化Live2D视图，替换emotion_label.
+        """
+        if not self.use_live2d or not self.emotion_label:
+            return
+
+        try:
+            # 创建Live2D WebEngine视图
+            self.live2d_view = QWebEngineView()
+
+            # 获取emotion_label的父容器和布局位置
+            parent_layout = self.emotion_label.parent().layout()
+            if parent_layout:
+                # 找到emotion_label在布局中的位置
+                for i in range(parent_layout.count()):
+                    item = parent_layout.itemAt(i)
+                    if item and item.widget() == self.emotion_label:
+                        # 隐藏原来的emotion_label但保留作为降级方案
+                        self.emotion_label.hide()
+
+                        # 在相同位置插入Live2D视图
+                        parent_layout.insertWidget(i, self.live2d_view)
+
+                        # 设置Live2D视图的大小策略
+                        self.live2d_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+                        # 加载Live2D页面
+                        live2d_path = Path(__file__).parent / "live2d" / "index.html"
+                        if live2d_path.exists():
+                            url = QUrl.fromLocalFile(str(live2d_path.absolute()))
+                            self.live2d_view.load(url)
+                            self.logger.info(f"Live2D页面加载: {url.toString()}")
+                        else:
+                            self.logger.error(f"Live2D页面不存在: {live2d_path}")
+                            self._fallback_to_emoji()
+
+                        break
+            else:
+                self.logger.warning("无法找到emotion_label的父布局，回退到emoji显示")
+                self._fallback_to_emoji()
+
+        except Exception as e:
+            self.logger.error(f"Live2D视图初始化失败: {e}", exc_info=True)
+            self._fallback_to_emoji()
+
+    def _fallback_to_emoji(self):
+        """
+        回退到emoji显示.
+        """
+        self.use_live2d = False
+        if self.emotion_label:
+            self.emotion_label.show()
+        if self.live2d_view:
+            self.live2d_view.hide()
+
     def _connect_events(self):
         """
         连接事件.
@@ -437,6 +655,9 @@ class GuiDisplay(BaseDisplay, QObject, metaclass=CombinedMeta):
             self.text_input.returnPressed.connect(self._on_send_button_click)
         if self.settings_btn:
             self.settings_btn.clicked.connect(self._on_settings_button_click)
+
+        # 连接表情测试按钮事件
+        self._connect_emotion_test_events()
 
         # 设置窗口关闭事件
         self.root.closeEvent = self._closeEvent
@@ -487,6 +708,29 @@ class GuiDisplay(BaseDisplay, QObject, metaclass=CombinedMeta):
             await self.update_emotion("neutral")
         except Exception as e:
             self.logger.error(f"设置默认表情失败: {e}", exc_info=True)
+
+    def _setup_emotion_listener(self):
+        """
+        安装小智AI表情监听器（无损入侵式设计）
+        """
+        try:
+            # 允许通过环境变量禁用监听器用于排障
+            if os.getenv("XIAOZHI_DISABLE_EMOTION_LISTENER") == "1":
+                self.logger.warning(
+                    "已通过环境变量禁用表情监听器 (XIAOZHI_DISABLE_EMOTION_LISTENER=1)"
+                )
+                return
+
+            from src.display.emotion_listener import EmotionListener
+
+            self._emotion_listener = EmotionListener(self)
+            self._emotion_listener.start_listening()
+
+            self.logger.info("✅ 小智AI表情监听器已安装并启动")
+
+        except Exception as e:
+            self.logger.error(f"安装表情监听器失败: {e}", exc_info=True)
+            # 即使监听器安装失败，也不影响原有功能
 
     def _update_system_tray(self, status):
         """
@@ -673,3 +917,102 @@ class GuiDisplay(BaseDisplay, QObject, metaclass=CombinedMeta):
                 self.root.show()
                 self.root.activateWindow()
                 self.root.raise_()
+
+    def _init_emotion_test_buttons(self):
+        """
+        初始化表情测试按钮引用.
+        """
+        # 基础情感按钮
+        self.btn_happy = self.root.findChild(QPushButton, "btn_happy")
+        self.btn_sad = self.root.findChild(QPushButton, "btn_sad")
+        self.btn_angry = self.root.findChild(QPushButton, "btn_angry")
+        self.btn_surprised = self.root.findChild(QPushButton, "btn_surprised")
+        self.btn_thinking = self.root.findChild(QPushButton, "btn_thinking")
+        self.btn_loving = self.root.findChild(QPushButton, "btn_loving")
+
+        # 高级情感按钮
+        self.btn_laughing = self.root.findChild(QPushButton, "btn_laughing")
+        self.btn_crying = self.root.findChild(QPushButton, "btn_crying")
+        self.btn_winking = self.root.findChild(QPushButton, "btn_winking")
+        self.btn_cool = self.root.findChild(QPushButton, "btn_cool")
+        self.btn_embarrassed = self.root.findChild(QPushButton, "btn_embarrassed")
+        self.btn_sleepy = self.root.findChild(QPushButton, "btn_sleepy")
+        self.btn_shocked = self.root.findChild(QPushButton, "btn_shocked")
+        self.btn_relaxed = self.root.findChild(QPushButton, "btn_relaxed")
+        self.btn_delicious = self.root.findChild(QPushButton, "btn_delicious")
+        self.btn_confident = self.root.findChild(QPushButton, "btn_confident")
+
+        # 特殊情感按钮
+        self.btn_funny = self.root.findChild(QPushButton, "btn_funny")
+        self.btn_silly = self.root.findChild(QPushButton, "btn_silly")
+        self.btn_kissy = self.root.findChild(QPushButton, "btn_kissy")
+        self.btn_confused = self.root.findChild(QPushButton, "btn_confused")
+        self.btn_neutral = self.root.findChild(QPushButton, "btn_neutral")
+
+        # 控制按钮
+        self.btn_reset = self.root.findChild(QPushButton, "btn_reset")
+
+    def _connect_emotion_test_events(self):
+        """
+        连接表情测试按钮事件.
+        """
+        emotion_buttons = {
+            self.btn_happy: "happy",
+            self.btn_sad: "sad",
+            self.btn_angry: "angry",
+            self.btn_surprised: "surprised",
+            self.btn_thinking: "thinking",
+            self.btn_loving: "loving",
+            self.btn_laughing: "laughing",
+            self.btn_crying: "crying",
+            self.btn_winking: "winking",
+            self.btn_cool: "cool",
+            self.btn_embarrassed: "embarrassed",
+            self.btn_sleepy: "sleepy",
+            self.btn_shocked: "shocked",
+            self.btn_relaxed: "relaxed",
+            self.btn_delicious: "delicious",
+            self.btn_confident: "confident",
+            self.btn_funny: "funny",
+            self.btn_silly: "silly",
+            self.btn_kissy: "kissy",
+            self.btn_confused: "confused",
+            self.btn_neutral: "neutral"
+        }
+
+        # 连接表情按钮事件
+        for button, emotion in emotion_buttons.items():
+            if button:
+                button.clicked.connect(lambda checked, e=emotion: self._test_emotion(e))
+
+        # 连接重置按钮
+        if self.btn_reset:
+            self.btn_reset.clicked.connect(self._reset_emotion)
+
+    def _test_emotion(self, emotion_name: str):
+        """
+        测试播放指定表情.
+        """
+        try:
+            self.logger.info(f"🎭 测试表情: {emotion_name}")
+
+            # 创建异步任务来更新表情
+            import asyncio
+            task = asyncio.create_task(self.update_emotion(emotion_name))
+
+            def _on_done(t):
+                if not t.cancelled() and t.exception():
+                    self.logger.error(f"表情测试失败 {emotion_name}: {t.exception()}")
+                else:
+                    self.logger.info(f"✅ 表情测试完成: {emotion_name}")
+
+            task.add_done_callback(_on_done)
+
+        except Exception as e:
+            self.logger.error(f"表情测试出错 {emotion_name}: {e}")
+
+    def _reset_emotion(self):
+        """
+        重置到默认表情.
+        """
+        self._test_emotion("neutral")
