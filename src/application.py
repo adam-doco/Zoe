@@ -800,6 +800,10 @@ class Application:
         logger.info(f"中止语音输出，原因: {reason}")
         self.aborted = True
         self.aborted_event.set()
+
+        # 停止Live2D嘴部动作
+        self._stop_live2d_speaking()
+
         if self.audio_codec:
             await self.audio_codec.clear_audio_queue()
 
@@ -938,6 +942,38 @@ class Application:
         设置表情.
         """
         self._update_display_async(self.display.update_emotion, emotion)
+
+    def _start_live2d_speaking(self):
+        """
+        启动Live2D嘴部说话动作.
+        """
+        if self.display and hasattr(self.display, 'live2d_view') and self.display.live2d_view:
+            try:
+                script = """
+                if(window.live2dController && window.live2dController.isModelLoaded()) {
+                    window.live2dController.startSpeaking();
+                }
+                """
+                self.display.live2d_view.page().runJavaScript(script)
+                logger.info("🗣️ Live2D嘴部说话动作已启动")
+            except Exception as e:
+                logger.error(f"启动Live2D嘴部动作失败: {e}")
+
+    def _stop_live2d_speaking(self):
+        """
+        停止Live2D嘴部说话动作.
+        """
+        if self.display and hasattr(self.display, 'live2d_view') and self.display.live2d_view:
+            try:
+                script = """
+                if(window.live2dController && window.live2dController.isModelLoaded()) {
+                    window.live2dController.stopSpeaking();
+                }
+                """
+                self.display.live2d_view.page().runJavaScript(script)
+                logger.info("🤐 Live2D嘴部说话动作已停止")
+            except Exception as e:
+                logger.error(f"停止Live2D嘴部动作失败: {e}")
 
     # 协议回调方法
     def _on_network_error(self, error_message=None):
@@ -1079,6 +1115,9 @@ class Application:
             self.aborted = False
             self.aborted_event.clear()
 
+        # 启动Live2D嘴部动作
+        self._start_live2d_speaking()
+
         # 在实时模式下，如果当前处于LISTENING状态，保持LISTENING状态以支持双向对话
         # 只有在IDLE状态或非实时模式下才转换到SPEAKING状态
         if self.device_state == DeviceState.IDLE:
@@ -1126,6 +1165,9 @@ class Application:
                         pass
             except Exception:
                 pass
+
+        # 停止Live2D嘴部动作
+        self._stop_live2d_speaking()
 
         # 状态转换逻辑优化
         if self.device_state == DeviceState.SPEAKING:

@@ -49,7 +49,7 @@ class EmotionMapping:
             # 🙂 - happy
             "happy": Live2DActionConfig(
                 action="kaixin",
-                expression="love_eyes",
+                expression="A1爱心眼",
                 duration=4.0,
                 priority=2,
                 description="开心快乐的状态"
@@ -58,7 +58,7 @@ class EmotionMapping:
             # 😆 - laughing
             "laughing": Live2DActionConfig(
                 action="kaixin",
-                expression="star_eyes",
+                expression="A3星星眼",
                 duration=4.0,
                 priority=2,
                 description="大笑开怀的状态"
@@ -67,7 +67,7 @@ class EmotionMapping:
             # 😂 - funny
             "funny": Live2DActionConfig(
                 action="kaixin",
-                expression="tongue",
+                expression="舌头",
                 duration=3.5,
                 priority=2,
                 description="搞笑幽默的状态"
@@ -76,7 +76,7 @@ class EmotionMapping:
             # 😔 - sad
             "sad": Live2DActionConfig(
                 action="idle",
-                expression="crying",
+                expression="A4哭哭",
                 duration=4.0,
                 priority=2,
                 description="悲伤难过的状态"
@@ -85,7 +85,7 @@ class EmotionMapping:
             # 😠 - angry
             "angry": Live2DActionConfig(
                 action="shengqi",
-                expression="angry",
+                expression="A2生气",
                 duration=3.5,
                 priority=3,
                 description="生气愤怒的状态"
@@ -94,7 +94,7 @@ class EmotionMapping:
             # 😭 - crying
             "crying": Live2DActionConfig(
                 action="idle",
-                expression="crying",
+                expression="A4哭哭",
                 duration=4.5,
                 priority=3,
                 description="哭泣痛苦的状态"
@@ -103,7 +103,7 @@ class EmotionMapping:
             # 😍 - loving
             "loving": Live2DActionConfig(
                 action="kaixin",
-                expression="love_eyes",
+                expression="A1爱心眼",
                 duration=4.5,
                 priority=3,
                 description="爱意满满的状态"
@@ -121,7 +121,7 @@ class EmotionMapping:
             # 😲 - surprised
             "surprised": Live2DActionConfig(
                 action="jingya",
-                expression="star_eyes",
+                expression="A3星星眼",
                 duration=2.5,
                 priority=3,
                 description="惊讶意外的状态"
@@ -148,7 +148,7 @@ class EmotionMapping:
             # 😉 - winking
             "winking": Live2DActionConfig(
                 action="wink",
-                expression="tongue",
+                expression="舌头",
                 duration=2.5,
                 priority=2,
                 description="眨眼调皮的状态"
@@ -175,7 +175,7 @@ class EmotionMapping:
             # 🤤 - delicious
             "delicious": Live2DActionConfig(
                 action="kaixin",
-                expression="tongue",
+                expression="舌头",
                 duration=3.0,
                 priority=2,
                 description="美味享受的状态"
@@ -184,7 +184,7 @@ class EmotionMapping:
             # 😘 - kissy
             "kissy": Live2DActionConfig(
                 action="kaixin",
-                expression="love_eyes",
+                expression="A1爱心眼",
                 duration=3.5,
                 priority=2,
                 description="飞吻示爱的状态"
@@ -211,7 +211,7 @@ class EmotionMapping:
             # 😜 - silly
             "silly": Live2DActionConfig(
                 action="wink",
-                expression="tongue",
+                expression="舌头",
                 duration=2.5,
                 priority=2,
                 description="调皮搞怪的状态"

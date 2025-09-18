@@ -17,6 +17,7 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView
 
 from src.display.base_display import BaseDisplay
 from src.utils.resource_finder import find_assets_dir
+from src.widgets.chat_widget import ChatWidget
 
 
 # 创建兼容的元类
@@ -42,6 +43,11 @@ class GuiDisplay(BaseDisplay, QObject, metaclass=CombinedMeta):
         self.mode_btn = None
         self.text_input = None
         self.send_btn = None
+
+        # 聊天面板相关控件
+        self.chat_panel = None
+        self.chat_toggle_btn = None
+        self.chat_widget = None
 
         # 表情管理
         self.emotion_movie = None
@@ -218,6 +224,8 @@ QPushButton:pressed {
         更新TTS文本.
         """
         self._safe_update_label(self.tts_text_label, text)
+        # 同时将AI回复添加到聊天面板
+        self.add_ai_message_to_chat(text)
 
     async def update_emotion(self, emotion_name: str):
         """
@@ -574,11 +582,105 @@ QPushButton:pressed {
         self.text_input = self.root.findChild(QLineEdit, "text_input")
         self.send_btn = self.root.findChild(QPushButton, "send_btn")
 
+        # 初始化聊天面板
+        self._init_chat_panel()
+
         # 初始化Live2D视图
         self._init_live2d_view()
 
         # 初始化表情测试按钮
         self._init_emotion_test_buttons()
+
+    def _init_chat_panel(self):
+        """
+        初始化聊天面板和相关控件
+        """
+        try:
+            # 获取聊天面板容器和切换按钮
+            self.chat_panel = self.root.findChild(QWidget, "chat_panel")
+            self.chat_toggle_btn = self.root.findChild(QPushButton, "chat_toggle_btn")
+
+            if self.chat_panel and self.chat_toggle_btn:
+                # 创建ChatWidget实例
+                self.chat_widget = ChatWidget()
+
+                # 为聊天面板设置布局（如果没有的话）
+                if not self.chat_panel.layout():
+                    from PyQt5.QtWidgets import QVBoxLayout
+                    layout = QVBoxLayout(self.chat_panel)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    layout.setSpacing(0)
+
+                # 将ChatWidget添加到聊天面板布局中
+                self.chat_panel.layout().addWidget(self.chat_widget)
+
+                # 连接切换按钮事件
+                self.chat_toggle_btn.clicked.connect(self._toggle_chat_panel)
+
+                # 初始化时设置聊天面板为隐藏状态
+                self.chat_panel.setVisible(False)
+                self.chat_toggle_btn.setText("显示聊天")
+
+                # 初始化时添加欢迎消息
+                self.chat_widget.add_system_message("小智AI聊天记录面板已启动")
+
+                self.logger.info("聊天面板初始化成功")
+            else:
+                self.logger.warning("未找到聊天面板UI元素，聊天功能将不可用")
+
+        except Exception as e:
+            self.logger.error(f"聊天面板初始化失败: {e}")
+
+    def _toggle_chat_panel(self):
+        """
+        切换聊天面板的显示/隐藏状态
+        """
+        try:
+            if self.chat_panel and self.chat_toggle_btn:
+                is_visible = self.chat_panel.isVisible()
+                self.chat_panel.setVisible(not is_visible)
+
+                if is_visible:
+                    self.chat_toggle_btn.setText("显示聊天")
+                    self.logger.info("聊天面板已隐藏")
+                else:
+                    self.chat_toggle_btn.setText("隐藏聊天")
+                    self.logger.info("聊天面板已显示")
+        except Exception as e:
+            self.logger.error(f"切换聊天面板状态失败: {e}")
+
+    def add_user_message_to_chat(self, message: str):
+        """
+        添加用户消息到聊天面板
+        """
+        try:
+            if self.chat_widget:
+                self.chat_widget.add_user_message(message)
+                self.logger.debug(f"用户消息已添加到聊天面板: {message[:50]}...")
+        except Exception as e:
+            self.logger.error(f"添加用户消息失败: {e}")
+
+    def add_ai_message_to_chat(self, message: str):
+        """
+        添加AI回复消息到聊天面板
+        """
+        try:
+            if self.chat_widget:
+                self.chat_widget.add_ai_message(message)
+                self.logger.debug(f"AI消息已添加到聊天面板: {message[:50]}...")
+        except Exception as e:
+            self.logger.error(f"添加AI消息失败: {e}")
+
+    def add_system_message_to_chat(self, message: str):
+        """
+        添加系统消息到聊天面板
+        """
+        try:
+            if self.chat_widget:
+                self.chat_widget.add_system_message(message)
+                self.logger.debug(f"系统消息已添加到聊天面板: {message[:50]}...")
+        except Exception as e:
+            self.logger.error(f"添加系统消息失败: {e}")
 
     def _init_live2d_view(self):
         """
@@ -865,6 +967,9 @@ QPushButton:pressed {
         if not text:
             return
 
+        # 将用户消息添加到聊天面板
+        self.add_user_message_to_chat(text)
+
         self.text_input.clear()
 
         try:
@@ -1016,3 +1121,41 @@ QPushButton:pressed {
         重置到默认表情.
         """
         self._test_emotion("neutral")
+
+    def _test_speaking_start(self):
+        """
+        测试嘴部说话动作开始.
+        """
+        try:
+            if self.live2d_view:
+                script = """
+                if(window.live2dController && window.live2dController.isModelLoaded()) {
+                    window.live2dController.startSpeaking();
+                    console.log('🧪 测试: 嘴部说话动作已启动');
+                } else {
+                    console.warn('🧪 测试失败: Live2D模型未加载');
+                }
+                """
+                self.live2d_view.page().runJavaScript(script)
+                self.logger.info("🧪 测试启动嘴部说话动作")
+        except Exception as e:
+            self.logger.error(f"测试嘴部说话动作失败: {e}")
+
+    def _test_speaking_stop(self):
+        """
+        测试嘴部说话动作停止.
+        """
+        try:
+            if self.live2d_view:
+                script = """
+                if(window.live2dController && window.live2dController.isModelLoaded()) {
+                    window.live2dController.stopSpeaking();
+                    console.log('🧪 测试: 嘴部说话动作已停止');
+                } else {
+                    console.warn('🧪 测试失败: Live2D模型未加载');
+                }
+                """
+                self.live2d_view.page().runJavaScript(script)
+                self.logger.info("🧪 测试停止嘴部说话动作")
+        except Exception as e:
+            self.logger.error(f"测试嘴部说话动作停止失败: {e}")
