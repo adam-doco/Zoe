@@ -121,11 +121,15 @@ class Application:
         self.wake_word_detector = None
         # 任务管理
         self.running = False
+        self.skip_activation = False  # 跳过激活模式标志
         self._main_tasks: Set[asyncio.Task] = set()
         # 轻量后台任务池（非长期任务），用于关停时统一取消
         self._bg_tasks: Set[asyncio.Task] = set()
 
         # 运行指标/计数
+
+        # AI回复消息累积
+        self._current_ai_response = ""  # 当前AI回复的累积内容
         self._command_dropped_count = 0
 
         # 命令队列 - 延迟到事件循环运行时初始化
@@ -858,12 +862,27 @@ class Application:
         try:
             if not self.running or not self.display:
                 return
-            
-            # 创建后台任务更新显示，避免阻塞
-            async def _update():
-                await update_func(*args)
-            
-            self._create_background_task(_update(), "显示更新")
+
+            # 检查是否为协程函数并正确处理
+            if asyncio.iscoroutinefunction(update_func):
+                # 创建后台任务更新显示，避免阻塞
+                async def _update():
+                    try:
+                        await update_func(*args)
+                    except Exception as e:
+                        logger.error(f"显示更新函数执行失败: {e}", exc_info=True)
+
+                task = asyncio.create_task(_update(), name=f"display_update_{update_func.__name__}")
+                def _on_done(t):
+                    if not t.cancelled() and t.exception():
+                        logger.error(f"显示更新任务异常: {t.exception()}", exc_info=True)
+                task.add_done_callback(_on_done)
+            else:
+                # 同步函数直接调用
+                try:
+                    update_func(*args)
+                except Exception as e:
+                    logger.error(f"显示更新函数执行失败: {e}", exc_info=True)
         except Exception as e:
             logger.error(f"调度显示更新失败: {e}", exc_info=True)
 
@@ -935,7 +954,12 @@ class Application:
         """
         设置聊天消息.
         """
-        self._update_display_async(self.display.update_text, message)
+        if role == "user":
+            # 用户消息添加到聊天面板
+            self._update_display_async(self.display.add_user_message_to_chat, message)
+        elif role == "assistant":
+            # AI回复消息，更新TTS文本标签并添加到聊天面板
+            self._update_display_async(self.display.update_text, message)
 
     def set_emotion(self, emotion):
         """
@@ -981,7 +1005,13 @@ class Application:
         网络错误回调.
         """
         if error_message:
-            logger.error(error_message)
+            if self.skip_activation:
+                # 在调试模式下，网络错误只记录为警告，不影响程序运行
+                logger.warning(f"网络连接错误（调试模式）: {error_message}")
+            else:
+                logger.error(error_message)
+
+        # 在调试模式下仍然处理网络错误，但不会导致程序退出
         self.schedule_command_nowait(self._handle_network_error)
 
     async def _handle_network_error(self):
@@ -993,6 +1023,10 @@ class Application:
 
         if self.protocol:
             await self.protocol.close_audio_channel()
+
+        # 在调试模式下（跳过激活），网络错误不应导致程序退出
+        # 只是停止网络相关功能，保持GUI界面可用
+        logger.warning("网络连接中断，程序将以离线模式继续运行")
 
     def _on_incoming_audio(self, data):
         """
@@ -1095,7 +1129,10 @@ class Application:
             text = data.get("text", "")
             if text:
                 logger.info(f"<< {text}")
-                self.set_chat_message("assistant", text)
+                # 每句话立即创建一个聊天气泡
+                self._update_display_async(self.display.add_ai_message_to_chat, text)
+                # 同时更新TTS文本显示
+                self._update_display_async(self.display.update_text, text)
 
                 import re
 

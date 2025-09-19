@@ -463,8 +463,18 @@
 
         // 页面加载完成后初始化
         window.addEventListener('DOMContentLoaded', () => {
-            const controller = new Live2DController();
-            controller.init();
+            console.log('🚀 DOM加载完成，开始创建Live2D控制器...');
+            try {
+                const controller = new Live2DController();
+                console.log('✓ Live2D控制器创建成功，开始初始化...');
+                controller.init().then(() => {
+                    console.log('🎉 Live2D完全初始化成功');
+                }).catch((error) => {
+                    console.error('❌ Live2D初始化Promise失败:', error);
+                });
+            } catch (error) {
+                console.error('❌ Live2D控制器创建失败:', error);
+            }
         });
     </script>
 </body>

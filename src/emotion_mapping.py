@@ -229,7 +229,7 @@ class EmotionMapping:
             # === 兼容旧版映射 ===
             "joy": Live2DActionConfig(
                 action="kaixin",
-                expression="star_eyes",
+                expression="A3星星眼",
                 duration=3.5,
                 priority=2,
                 description="喜悦兴奋的状态"
@@ -237,7 +237,7 @@ class EmotionMapping:
 
             "excited": Live2DActionConfig(
                 action="kaixin",
-                expression="star_eyes",
+                expression="A3星星眼",
                 duration=3.0,
                 priority=2,
                 description="兴奋激动的状态"
@@ -245,7 +245,7 @@ class EmotionMapping:
 
             "love": Live2DActionConfig(
                 action="kaixin",
-                expression="love_eyes",
+                expression="A1爱心眼",
                 duration=4.5,
                 priority=3,
                 description="爱意满满的状态"
@@ -254,7 +254,7 @@ class EmotionMapping:
             # === 扩展兼容映射（保持向后兼容） ===
             "disappointed": Live2DActionConfig(
                 action="idle",
-                expression="crying",
+                expression="A4哭哭",
                 duration=3.0,
                 priority=2,
                 description="失望沮丧的状态"
@@ -270,7 +270,7 @@ class EmotionMapping:
 
             "amazed": Live2DActionConfig(
                 action="jingya",
-                expression="star_eyes",
+                expression="A3星星眼",
                 duration=3.5,
                 priority=2,
                 description="惊叹赞叹的状态"
@@ -286,7 +286,7 @@ class EmotionMapping:
 
             "playful": Live2DActionConfig(
                 action="wink",
-                expression="tongue",
+                expression="舌头",
                 duration=2.5,
                 priority=2,
                 description="顽皮搞怪的状态"
@@ -294,7 +294,7 @@ class EmotionMapping:
 
             "mischievous": Live2DActionConfig(
                 action="wink",
-                expression="tongue",
+                expression="舌头",
                 duration=3.0,
                 priority=2,
                 description="淘气调皮的状态"
@@ -310,7 +310,7 @@ class EmotionMapping:
 
             "greeting": Live2DActionConfig(
                 action="kaixin",
-                expression="love_eyes",
+                expression="A1爱心眼",
                 duration=3.0,
                 priority=2,
                 description="打招呼问候的状态"
@@ -441,7 +441,7 @@ class EmotionMapping:
         available_actions = ["idle", "jingya", "kaixin", "shengqi", "wink", "yaotou", "talk"]
         
         # 可用的Live2D表情
-        available_expressions = ["love_eyes", "angry", "star_eyes", "crying", "microphone", "coat", "tongue"]
+        available_expressions = ["A1爱心眼", "A2生气", "A3星星眼", "A4哭哭", "B1麦克风", "B2外套", "舌头"]
         
         validation_result = {
             "total_emotions": len(self.emotion_map),

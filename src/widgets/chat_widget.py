@@ -1,257 +1,259 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 """
-聊天对话显示组件 - 适配Zoev3项目
+聊天对话显示组件 - 使用WebView实现现代化聊天界面
 """
 
-import html
-from datetime import datetime
-from typing import Optional
-
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QFont, QTextCursor, QTextCharFormat, QColor
-from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QTextBrowser, QScrollBar,
-    QHBoxLayout, QPushButton, QLabel
-)
-
+import os
 import logging
+from pathlib import Path
+from datetime import datetime
+from PyQt5.QtWidgets import QWidget, QVBoxLayout
+from PyQt5.QtWebEngineWidgets import QWebEngineView
+from PyQt5.QtWebChannel import QWebChannel
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QUrl
+
 logger = logging.getLogger(__name__)
+
+
+class ChatBridge(QObject):
+    """Python与JavaScript通信桥接类"""
+
+    # 信号定义
+    messageAdded = pyqtSignal(str, str)  # 消息内容, 发送者类型
+
+    def __init__(self):
+        super().__init__()
+        self._message_count = 0
+
+    @pyqtSlot(str, str)
+    def addMessage(self, text, sender):
+        """从JavaScript调用：添加消息"""
+        self._message_count += 1
+        self.messageAdded.emit(text, sender)
+        logger.debug(f"通过JS桥接添加{sender}消息: {text[:50]}...")
+
+    @pyqtSlot()
+    def getMessageCount(self):
+        """获取消息数量"""
+        return self._message_count
 
 
 class ChatWidget(QWidget):
     """
-    聊天对话显示组件 - Zoev3专用版本
-    支持显示用户消息、AI回复和系统消息
+    基于WebView的现代化聊天组件
     """
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self._setup_ui()
-        self._setup_styles()
+        self.logger = logging.getLogger(__name__)
 
-        # 消息计数
+        # 创建WebView和通信桥接
+        self._web_view = None
+        self._bridge = None
+        self._channel = None
         self._message_count = 0
-        # 是否自动滚动
-        self._auto_scroll = True
 
-    def _setup_ui(self):
-        """设置UI布局"""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(5)
+        self._init_ui()
+        self._setup_web_interface()
 
-        # 顶部工具栏
-        toolbar_layout = QHBoxLayout()
+        self.logger.info("WebView聊天组件初始化完成")
 
-        # 消息计数标签
-        self._message_count_label = QLabel("聊天记录: 0条")
-        self._message_count_label.setStyleSheet("color: #666; font-size: 11px; font-weight: bold;")
-        toolbar_layout.addWidget(self._message_count_label)
-
-        toolbar_layout.addStretch()
-
-        # 自动滚动开关
-        self._auto_scroll_button = QPushButton("自动滚动: 开")
-        self._auto_scroll_button.setMaximumWidth(80)
-        self._auto_scroll_button.setCheckable(True)
-        self._auto_scroll_button.setChecked(True)
-        self._auto_scroll_button.clicked.connect(self._toggle_auto_scroll)
-        toolbar_layout.addWidget(self._auto_scroll_button)
-
-        # 清空按钮
-        self._clear_button = QPushButton("清空")
-        self._clear_button.setMaximumWidth(50)
-        self._clear_button.clicked.connect(self.clear_history)
-        toolbar_layout.addWidget(self._clear_button)
-
-        # 滚动到底部按钮
-        self._scroll_bottom_button = QPushButton("↓")
-        self._scroll_bottom_button.setMaximumWidth(25)
-        self._scroll_bottom_button.clicked.connect(self._scroll_to_bottom)
-        toolbar_layout.addWidget(self._scroll_bottom_button)
-
-        layout.addLayout(toolbar_layout)
-
-        # 聊天显示区域
-        self._chat_browser = QTextBrowser(self)
-        self._chat_browser.setReadOnly(True)
-        self._chat_browser.setOpenExternalLinks(False)
-        self._chat_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self._chat_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
-        # 设置字体
-        font = QFont("Microsoft YaHei", 10)
-        self._chat_browser.setFont(font)
-
-        layout.addWidget(self._chat_browser)
-
-    def _setup_styles(self):
-        """设置样式"""
+    def _init_ui(self):
+        """初始化UI布局"""
+        # 设置基础样式
         self.setStyleSheet("""
             ChatWidget {
                 background-color: transparent;
             }
-            QTextBrowser {
-                background-color: rgba(255, 255, 255, 0.95);
-                border: 1px solid rgba(0, 0, 0, 0.1);
-                border-radius: 8px;
-                padding: 8px;
-            }
-            QPushButton {
-                background-color: rgba(240, 240, 240, 0.9);
-                border: 1px solid #d0d0d0;
-                border-radius: 4px;
-                padding: 3px 6px;
-                font-size: 10px;
-            }
-            QPushButton:hover {
-                background-color: rgba(230, 230, 230, 0.9);
-            }
-            QPushButton:pressed {
-                background-color: rgba(220, 220, 220, 0.9);
-            }
-            QPushButton:checked {
-                background-color: rgba(0, 122, 255, 0.2);
-                color: #007AFF;
+        """)
+
+        # 创建布局
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # 创建WebView
+        self._web_view = QWebEngineView()
+        self._web_view.setStyleSheet("""
+            QWebEngineView {
+                background: transparent;
+                background-color: rgba(0, 0, 0, 0);
             }
         """)
 
-    def _toggle_auto_scroll(self):
-        """切换自动滚动"""
-        self._auto_scroll = self._auto_scroll_button.isChecked()
-        if self._auto_scroll:
-            self._auto_scroll_button.setText("自动滚动: 开")
-            self._scroll_to_bottom()
-        else:
-            self._auto_scroll_button.setText("自动滚动: 关")
+        layout.addWidget(self._web_view)
+        self.setLayout(layout)
+
+    def _setup_web_interface(self):
+        """设置Web界面和JavaScript通信"""
+        try:
+            # 设置WebEngine页面背景为透明
+            from PyQt5.QtWebEngineWidgets import QWebEnginePage
+            from PyQt5.QtCore import Qt
+
+            # 创建自定义页面并设置透明背景
+            page = self._web_view.page()
+            page.setBackgroundColor(Qt.transparent)
+
+            # 创建通信桥接
+            self._bridge = ChatBridge()
+            self._bridge.messageAdded.connect(self._on_message_added)
+
+            # 创建Web通道
+            self._channel = QWebChannel()
+            self._channel.registerObject('chatBridge', self._bridge)
+            page.setWebChannel(self._channel)
+
+            # 加载HTML文件
+            html_file = Path(__file__).parent / "chat_interface.html"
+            if html_file.exists():
+                self._web_view.load(QUrl.fromLocalFile(str(html_file.absolute())))
+                self.logger.info(f"加载聊天界面: {html_file}")
+            else:
+                self.logger.error(f"聊天界面文件不存在: {html_file}")
+                self._load_fallback_html()
+
+        except Exception as e:
+            self.logger.error(f"设置Web界面失败: {e}", exc_info=True)
+            self._load_fallback_html()
+
+    def _load_fallback_html(self):
+        """加载后备HTML内容"""
+        fallback_html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {
+                    font-family: system-ui;
+                    background: transparent;
+                    margin: 10px;
+                    color: #333;
+                }
+                .error {
+                    color: #ff4444;
+                    text-align: center;
+                    padding: 20px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="error">
+                <p>聊天界面加载失败</p>
+                <p>请检查chat_interface.html文件</p>
+            </div>
+        </body>
+        </html>
+        """
+        self._web_view.setHtml(fallback_html)
+
+    def _on_message_added(self, text, sender):
+        """处理消息添加信号"""
+        self._message_count += 1
+        self.logger.debug(f"消息计数更新: {self._message_count}")
 
     def add_user_message(self, message: str):
         """添加用户消息"""
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self._add_message("user", "您", message, timestamp)
+        self._add_message_to_web("user", "您", message, timestamp)
 
     def add_ai_message(self, message: str):
         """添加AI回复消息"""
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self._add_message("ai", "小智", message, timestamp)
+        self._add_message_to_web("ai", "Zoe", message, timestamp)
 
     def add_system_message(self, message: str):
         """添加系统消息"""
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self._add_message("system", "系统", message, timestamp)
+        self._add_message_to_web("system", "系统", message, timestamp)
 
-    def _add_message(self, msg_type: str, sender: str, content: str, timestamp: str):
-        """添加消息到显示区域"""
-        self._message_count += 1
-        self._update_message_count()
+    def _add_message_to_web(self, msg_type: str, sender: str, content: str, timestamp: str):
+        """将消息添加到Web界面"""
+        try:
+            # 转义JavaScript中的特殊字符
+            content_escaped = content.replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n')
 
-        # 转义HTML特殊字符
-        content_escaped = html.escape(content)
-        sender_escaped = html.escape(sender)
-        timestamp_escaped = html.escape(timestamp)
-
-        # 根据消息类型设置不同样式
-        if msg_type == "user":
-            message_html = f"""
-            <div style="margin: 8px 0; text-align: right;">
-                <div style="background: linear-gradient(135deg, #007AFF, #0056CC); color: white;
-                           display: inline-block; padding: 8px 12px; border-radius: 18px;
-                           max-width: 70%; word-wrap: break-word; margin-right: 8px;
-                           box-shadow: 0 2px 6px rgba(0, 122, 255, 0.3);">
-                    {content_escaped}
-                </div>
-                <div style="font-size: 10px; color: #888; margin-top: 2px; margin-right: 8px;">
-                    {sender_escaped} {timestamp_escaped}
-                </div>
-            </div>
+            # 调用JavaScript函数添加消息，使用安全的方式检查API是否存在
+            js_code = f"""
+                if (window.chatAPI && window.chatAPI.addMessage) {{
+                    window.chatAPI.addMessage('{content_escaped}', '{msg_type}');
+                }} else {{
+                    console.error('chatAPI not ready, message:', '{content_escaped}');
+                    setTimeout(function() {{
+                        if (window.chatAPI && window.chatAPI.addMessage) {{
+                            window.chatAPI.addMessage('{content_escaped}', '{msg_type}');
+                        }}
+                    }}, 100);
+                }}
             """
-        elif msg_type == "ai":
-            message_html = f"""
-            <div style="margin: 8px 0; text-align: left;">
-                <div style="background-color: #f5f5f5; color: #333; display: inline-block;
-                           padding: 8px 12px; border-radius: 18px; max-width: 70%;
-                           word-wrap: break-word; margin-left: 8px;
-                           border: 1px solid #e8e8e8; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
-                    {content_escaped}
-                </div>
-                <div style="font-size: 10px; color: #888; margin-top: 2px; margin-left: 8px;">
-                    {sender_escaped} {timestamp_escaped}
-                </div>
-            </div>
-            """
-        else:  # system
-            message_html = f"""
-            <div style="margin: 5px 0; text-align: center;">
-                <div style="background-color: rgba(255, 243, 205, 0.8); color: #856404;
-                           display: inline-block; padding: 4px 10px; border-radius: 12px;
-                           font-size: 11px; border: 1px solid rgba(255, 234, 167, 0.8);
-                           box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);">
-                    [{timestamp_escaped}] {content_escaped}
-                </div>
-            </div>
-            """
+            self._web_view.page().runJavaScript(js_code)
 
-        # 插入消息
-        cursor = self._chat_browser.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        cursor.insertHtml(message_html)
+            self._message_count += 1
+            self.logger.debug(f"添加{msg_type}消息到Web界面: {content[:50]}...")
 
-        # 自动滚动到底部
-        if self._auto_scroll:
-            self._scroll_to_bottom()
+        except Exception as e:
+            self.logger.error(f"添加消息到Web界面失败: {e}", exc_info=True)
 
-        logger.debug(f"添加{msg_type}消息: {content[:30]}...")
+    def clear_messages(self):
+        """清空所有消息"""
+        try:
+            js_code = "window.chatAPI.clearMessages();"
+            self._web_view.page().runJavaScript(js_code)
+            self._message_count = 0
+            self.logger.info("清空聊天记录")
+        except Exception as e:
+            self.logger.error(f"清空消息失败: {e}", exc_info=True)
 
-    def _update_message_count(self):
-        """更新消息计数显示"""
-        self._message_count_label.setText(f"聊天记录: {self._message_count}条")
+    def show_typing_indicator(self):
+        """显示正在输入指示器"""
+        try:
+            js_code = "window.chatAPI.showTypingIndicator();"
+            self._web_view.page().runJavaScript(js_code)
+        except Exception as e:
+            self.logger.error(f"显示输入指示器失败: {e}", exc_info=True)
 
-    def _scroll_to_bottom(self):
-        """滚动到底部"""
-        scrollbar = self._chat_browser.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+    def hide_typing_indicator(self):
+        """隐藏正在输入指示器"""
+        try:
+            js_code = "window.chatAPI.hideTypingIndicator();"
+            self._web_view.page().runJavaScript(js_code)
+        except Exception as e:
+            self.logger.error(f"隐藏输入指示器失败: {e}", exc_info=True)
 
-    def clear_history(self):
-        """清空对话历史"""
-        self._chat_browser.clear()
-        self._message_count = 0
-        self._update_message_count()
-        logger.info("对话历史已清空")
-
-        # 添加欢迎消息
-        self.add_system_message("聊天记录已清空 - 小智AI准备就绪")
-
-    def set_font_size(self, size: int):
-        """设置字体大小"""
-        font = self._chat_browser.font()
-        font.setPointSize(size)
-        self._chat_browser.setFont(font)
-        logger.debug(f"字体大小设置为: {size}")
-
-    def export_chat_history(self) -> str:
-        """导出对话历史为文本"""
-        return self._chat_browser.toPlainText()
-
-    def search_in_history(self, text: str) -> bool:
-        """在对话历史中搜索文本"""
-        if not text:
-            return False
-
-        # 使用QTextBrowser的查找功能
-        found = self._chat_browser.find(text)
-        if found:
-            logger.debug(f"在对话历史中找到: {text}")
-        else:
-            logger.debug(f"在对话历史中未找到: {text}")
-        return found
-
-    def get_message_count(self) -> int:
+    def get_message_count(self):
         """获取消息数量"""
         return self._message_count
 
-    def set_visible(self, visible: bool):
-        """设置组件可见性"""
-        self.setVisible(visible)
-        if visible and self._auto_scroll:
-            # 显示时自动滚动到底部
-            QTimer.singleShot(100, self._scroll_to_bottom)
+    def scroll_to_bottom(self):
+        """滚动到底部"""
+        try:
+            js_code = "window.chatAPI.scrollToBottom();"
+            self._web_view.page().runJavaScript(js_code)
+        except Exception as e:
+            self.logger.error(f"滚动到底部失败: {e}", exc_info=True)
+
+
+if __name__ == "__main__":
+    """测试聊天组件"""
+    import sys
+    from PyQt5.QtWidgets import QApplication
+
+    app = QApplication(sys.argv)
+
+    # 创建测试窗口
+    widget = ChatWidget()
+    widget.setWindowTitle("Zoe Chat Widget Test")
+    widget.resize(400, 600)
+    widget.show()
+
+    # 添加测试消息
+    widget.add_system_message("聊天组件测试开始")
+    widget.add_user_message("你好，这是用户消息测试")
+    widget.add_ai_message("你好！这是AI回复消息，测试圆角气泡效果")
+    widget.add_ai_message("支持多条AI消息，每条都是独立的气泡")
+    widget.add_user_message("很好！现在界面看起来现代化多了")
+
+    sys.exit(app.exec_())

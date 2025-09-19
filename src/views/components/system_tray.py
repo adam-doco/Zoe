@@ -58,13 +58,8 @@ class SystemTray(QObject):
             # 连接托盘图标的事件
             self.tray_icon.activated.connect(self._on_tray_activated)
 
-            # 设置初始图标（避免在某些平台第一次绘制引发崩溃，延迟到事件循环空闲时执行）
-            try:
-                from PyQt5.QtCore import QTimer
-
-                QTimer.singleShot(0, lambda: self.update_status("待命", connected=True))
-            except Exception:
-                self.update_status("待命", connected=True)
+            # 先设置初始图标，再显示（避免 "No Icon set" 错误）
+            self.update_status("待命", connected=True)
 
             # 显示系统托盘图标
             self.tray_icon.show()

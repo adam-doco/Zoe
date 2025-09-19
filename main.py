@@ -91,6 +91,11 @@ async def start_app(mode: str, protocol: str, skip_activation: bool) -> int:
 
     # 创建并启动应用程序
     app = Application.get_instance()
+
+    # 设置跳过激活标志（用于调试模式）
+    if skip_activation:
+        app.skip_activation = True
+
     return await app.run(mode=mode, protocol=protocol)
 
 

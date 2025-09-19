@@ -224,8 +224,7 @@ QPushButton:pressed {
         更新TTS文本.
         """
         self._safe_update_label(self.tts_text_label, text)
-        # 同时将AI回复添加到聊天面板
-        self.add_ai_message_to_chat(text)
+        # 不在这里添加聊天消息，改为累积消息并在适当时机添加
 
     async def update_emotion(self, emotion_name: str):
         """
@@ -248,15 +247,19 @@ QPushButton:pressed {
         # 优先使用Live2D，失败时回退到emoji
         if self.use_live2d and self.live2d_view:
             try:
-                # 调用Live2D表情切换（支持emoji输入）
+                # 调用Live2D表情切换（修复逻辑错误）
                 script = f"""
+                console.log('🎭 调用表情切换:', '{emotion_name}', '→', '{processed_emotion}');
                 if(window.live2dController && window.live2dController.isModelLoaded()) {{
-                    if ('{emotion_name}' !== '{processed_emotion}') {{
-                        // 如果输入是emoji，使用emoji播放方法
-                        window.live2dController.playEmotionByEmoji('{emotion_name}');
-                    }} else {{
-                        // 如果输入是emotion名称，使用标准方法
-                        window.live2dController.changeExpression('{processed_emotion}');
+                    // 始终使用标准的changeExpression方法，传入处理后的emotion名称
+                    window.live2dController.changeExpression('{processed_emotion}');
+                    console.log('✅ 表情切换调用完成:', '{processed_emotion}');
+                }} else {{
+                    console.error('❌ Live2D控制器未就绪或模型未加载');
+                    if(!window.live2dController) {{
+                        console.error('live2dController不存在');
+                    }} else if(!window.live2dController.isModelLoaded()) {{
+                        console.error('模型未加载完成');
                     }}
                 }}
                 """
@@ -582,7 +585,7 @@ QPushButton:pressed {
         self.text_input = self.root.findChild(QLineEdit, "text_input")
         self.send_btn = self.root.findChild(QPushButton, "send_btn")
 
-        # 初始化聊天面板
+        # 初始化聊天面板（固定显示）
         self._init_chat_panel()
 
         # 初始化Live2D视图
@@ -593,16 +596,36 @@ QPushButton:pressed {
 
     def _init_chat_panel(self):
         """
-        初始化聊天面板和相关控件
+        初始化聊天面板（固定显示模式）
         """
         try:
-            # 获取聊天面板容器和切换按钮
+            # 获取聊天面板容器
             self.chat_panel = self.root.findChild(QWidget, "chat_panel")
-            self.chat_toggle_btn = self.root.findChild(QPushButton, "chat_toggle_btn")
 
-            if self.chat_panel and self.chat_toggle_btn:
+            if self.chat_panel:
+                # 强制设置聊天面板为完全透明
+                self.chat_panel.setStyleSheet("""
+                    QFrame {
+                        background-color: rgba(0, 0, 0, 0);
+                        background: transparent;
+                        border: none;
+                    }
+                """)
+
                 # 创建ChatWidget实例
                 self.chat_widget = ChatWidget()
+
+                # 强制设置ChatWidget为完全透明
+                self.chat_widget.setStyleSheet("""
+                    ChatWidget {
+                        background-color: rgba(0, 0, 0, 0);
+                        background: transparent;
+                    }
+                    QWebEngineView {
+                        background-color: rgba(0, 0, 0, 0);
+                        background: transparent;
+                    }
+                """)
 
                 # 为聊天面板设置布局（如果没有的话）
                 if not self.chat_panel.layout():
@@ -614,40 +637,17 @@ QPushButton:pressed {
                 # 将ChatWidget添加到聊天面板布局中
                 self.chat_panel.layout().addWidget(self.chat_widget)
 
-                # 连接切换按钮事件
-                self.chat_toggle_btn.clicked.connect(self._toggle_chat_panel)
+                # 聊天面板固定显示
+                self.chat_panel.setVisible(True)
 
-                # 初始化时设置聊天面板为隐藏状态
-                self.chat_panel.setVisible(False)
-                self.chat_toggle_btn.setText("显示聊天")
+                # 初始化聊天面板，不添加任何欢迎消息
 
-                # 初始化时添加欢迎消息
-                self.chat_widget.add_system_message("小智AI聊天记录面板已启动")
-
-                self.logger.info("聊天面板初始化成功")
+                self.logger.info("聊天面板初始化成功（固定显示模式）")
             else:
                 self.logger.warning("未找到聊天面板UI元素，聊天功能将不可用")
 
         except Exception as e:
             self.logger.error(f"聊天面板初始化失败: {e}")
-
-    def _toggle_chat_panel(self):
-        """
-        切换聊天面板的显示/隐藏状态
-        """
-        try:
-            if self.chat_panel and self.chat_toggle_btn:
-                is_visible = self.chat_panel.isVisible()
-                self.chat_panel.setVisible(not is_visible)
-
-                if is_visible:
-                    self.chat_toggle_btn.setText("显示聊天")
-                    self.logger.info("聊天面板已隐藏")
-                else:
-                    self.chat_toggle_btn.setText("隐藏聊天")
-                    self.logger.info("聊天面板已显示")
-        except Exception as e:
-            self.logger.error(f"切换聊天面板状态失败: {e}")
 
     def add_user_message_to_chat(self, message: str):
         """
@@ -692,6 +692,17 @@ QPushButton:pressed {
         try:
             # 创建Live2D WebEngine视图
             self.live2d_view = QWebEngineView()
+
+            # 为Live2D视图设置专门的样式，确保正常渲染
+            self.live2d_view.setStyleSheet("""
+                QWebEngineView {
+                    background-color: rgba(0, 0, 0, 0);
+                }
+            """)
+
+            # 确保Live2D页面有正确的背景设置（不影响渲染）
+            page = self.live2d_view.page()
+            # 注意：不设置透明背景，让Live2D正常渲染
 
             # 获取emotion_label的父容器和布局位置
             parent_layout = self.emotion_label.parent().layout()
@@ -915,7 +926,15 @@ QPushButton:pressed {
         """
         处理窗口关闭事件.
         """
-        # 只要系统托盘可用，就最小化到托盘
+        # 检查是否在调试模式（skip_activation）
+        try:
+            from src.application import Application
+            app = Application.get_instance()
+            is_debug_mode = getattr(app, 'skip_activation', False)
+        except Exception:
+            is_debug_mode = False
+
+        # 在调试模式下，即使系统托盘不可用也只是隐藏窗口而不退出程序
         if self.system_tray and (
             getattr(self.system_tray, "is_available", lambda: False)()
             or getattr(self.system_tray, "is_visible", lambda: False)()
@@ -935,6 +954,14 @@ QPushButton:pressed {
             try:
                 if getattr(self, "emotion_movie", None) is not None:
                     self.emotion_movie.stop()
+            except Exception:
+                pass
+            event.ignore()
+        elif is_debug_mode:
+            # 调试模式下，即使没有系统托盘也只是隐藏窗口
+            self.logger.info("调试模式：隐藏窗口（系统托盘不可用）")
+            try:
+                self.root.hide()
             except Exception:
                 pass
             event.ignore()
@@ -967,9 +994,7 @@ QPushButton:pressed {
         if not text:
             return
 
-        # 将用户消息添加到聊天面板
-        self.add_user_message_to_chat(text)
-
+        # 不在这里添加消息，避免重复，让服务器返回确认后再显示
         self.text_input.clear()
 
         try:

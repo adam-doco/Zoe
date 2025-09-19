@@ -97,9 +97,9 @@ class EmotionListener:
         self._is_listening = False
         logger.info("🛑 表情监听器已停止")
 
-    def _enhanced_update_emotion(self, emotion_name: str):
+    async def _enhanced_update_emotion(self, emotion_name: str):
         """
-        增强版update_emotion方法
+        增强版update_emotion方法（异步版本）
         在不影响原有逻辑的前提下，加入自动化处理
 
         Args:
@@ -107,7 +107,7 @@ class EmotionListener:
         """
         try:
             # 先执行原有逻辑（完全不变）
-            result = self._original_update_emotion(emotion_name)
+            result = await self._original_update_emotion(emotion_name)
 
             # 然后执行额外的自动化处理
             self._process_xiaozhi_emotion(emotion_name)
@@ -116,7 +116,7 @@ class EmotionListener:
         except Exception as e:
             logger.error(f"❌ 表情监听器处理失败: {e}")
             # 即使监听器出错，也要确保原有功能正常
-            return self._original_update_emotion(emotion_name)
+            return await self._original_update_emotion(emotion_name)
 
     def _process_xiaozhi_emotion(self, emotion_name: str):
         """

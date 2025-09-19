@@ -491,14 +491,14 @@ QPushButton:pressed {
    </layout>
   </widget>
 
-  <!-- 聊天面板区域（可折叠） -->
+  <!-- 聊天内容显示区域（固定显示在模型下方） -->
   <widget class="QFrame" name="chat_panel">
    <property name="geometry">
     <rect>
-     <x>20</x>
-     <y>620</y>
-     <width>760</width>
-     <height>120</height>
+     <x>150</x>
+     <y>500</y>
+     <width>500</width>
+     <height>235</height>
     </rect>
    </property>
    <property name="visible">
@@ -507,73 +507,31 @@ QPushButton:pressed {
    <property name="styleSheet">
     <string>
 QFrame {
-    background-color: rgba(255, 255, 255, 0.9);
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    border-radius: 10px;
-    margin: 5px;
+    background-color: transparent;
+    border: none;
+    margin: 0px;
 }
     </string>
    </property>
    <layout class="QVBoxLayout" name="chat_panel_layout">
     <property name="spacing">
-     <number>0</number>
+     <number>5</number>
     </property>
     <property name="leftMargin">
-     <number>0</number>
+     <number>10</number>
     </property>
     <property name="rightMargin">
-     <number>0</number>
+     <number>10</number>
     </property>
     <property name="topMargin">
-     <number>0</number>
+     <number>10</number>
     </property>
     <property name="bottomMargin">
-     <number>0</number>
+     <number>10</number>
     </property>
    </layout>
   </widget>
 
-  <!-- 聊天面板显示/隐藏切换按钮 -->
-  <widget class="QPushButton" name="chat_toggle_btn">
-   <property name="geometry">
-    <rect>
-     <x>20</x>
-     <y>590</y>
-     <width>100</width>
-     <height>25</height>
-    </rect>
-   </property>
-   <property name="styleSheet">
-    <string>
-QPushButton {
-    background-color: rgba(255, 255, 255, 0.8);
-    color: #666666;
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    border-radius: 12px;
-    font-size: 11px;
-    padding: 4px 8px;
-    font-weight: 500;
-}
-QPushButton:hover {
-    background-color: rgba(255, 255, 255, 0.95);
-    color: #333333;
-}
-QPushButton:checked {
-    background-color: rgba(0, 122, 255, 0.2);
-    color: #007AFF;
-}
-    </string>
-   </property>
-   <property name="text">
-    <string>💬 聊天记录</string>
-   </property>
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="checked">
-    <bool>true</bool>
-   </property>
-  </widget>
 
   <!-- 打断按钮（左下角） -->
   <widget class="QPushButton" name="abort_btn">
