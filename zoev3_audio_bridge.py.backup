@@ -1,0 +1,735 @@
+#!/usr/bin/env python3
+"""
+Zoev4 -> Zoev3 音频桥接服务器
+直接向运行中的Zoev3实例注入Web端音频数据
+"""
+
+import asyncio
+import json
+import logging
+import sys
+import os
+import socket
+import threading
+import time
+from pathlib import Path
+from typing import Optional, Dict, Any
+import numpy as np
+import multiprocessing
+import gc
+import weakref
+from collections import defaultdict
+
+# WebSocket相关导入
+try:
+    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+    from fastapi.responses import HTMLResponse
+    import uvicorn
+    import opuslib
+    import aiohttp
+    import requests
+except ImportError as e:
+    print(f"❌ 缺少依赖包: {e}")
+    sys.exit(1)
+
+# 配置日志
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+class Zoev3AudioBridge:
+    """Zoev3音频桥接器"""
+
+    def __init__(self):
+        self.app = FastAPI(title="Zoev4 → Zoev3 音频桥接器")
+        self.opus_encoder = None
+        self.active_connections = set()
+
+        # Zoev3进程通信
+        self.zoev3_process = None
+        self.audio_injection_socket = None
+        self.zoev3_app_instance = None
+
+        # 统计信息
+        self.stats = {
+            'web_packets_received': 0,
+            'opus_packets_created': 0,
+            'zoev3_injections': 0,
+            'start_time': time.time()
+        }
+
+        # 录音会话管理
+        self.recording_sessions = {}  # 存储每个连接的录音会话
+        import tempfile
+        self.temp_dir = tempfile.mkdtemp(prefix="zoev4_recordings_")
+        logger.info(f"📁 录音临时目录: {self.temp_dir}")
+
+        # WebSocket连接管理 - 为日志转发和数据转发
+        self.websocket_connections = {}  # client_addr -> websocket
+
+        # Zoev3系统监听和拦截
+        self.zoev3_message_interceptor = None
+        self.intercepted_audio_data = []  # 存储拦截的音频数据
+        self.conversation_data = {  # 存储对话数据
+            'stt_results': [],
+            'llm_responses': [],
+            'tts_messages': []
+        }
+
+        self.setup_routes()
+
+    async def send_log_to_frontend(self, client_addr: str, log_message: str):
+        """发送日志消息到前端"""
+        if client_addr in self.websocket_connections:
+            try:
+                websocket = self.websocket_connections[client_addr]
+                log_msg = {
+                    "type": "server_log",
+                    "message": log_message,
+                    "timestamp": time.time()
+                }
+                await websocket.send_text(json.dumps(log_msg))
+            except Exception as e:
+                logger.warning(f"发送日志到前端失败: {e}")
+
+    def setup_routes(self):
+        """设置路由"""
+
+        @self.app.get("/")
+        async def get_index():
+            """返回测试页面"""
+            with open("web_audio_test.html", "r", encoding="utf-8") as f:
+                return HTMLResponse(content=f.read())
+
+        @self.app.websocket("/ws/audio")
+        async def websocket_audio_endpoint(websocket: WebSocket):
+            """WebSocket音频数据处理端点"""
+            await self.handle_audio_websocket(websocket)
+
+        @self.app.get("/status")
+        async def get_status():
+            """获取桥接器状态"""
+            return {
+                "bridge_active": True,
+                "zoev3_connection": self.check_zoev3_connection(),
+                "opus_encoder_ready": self.opus_encoder is not None,
+                "active_connections": len(self.active_connections),
+                "web_clients_connected": len(self.websocket_connections),
+                "conversation_messages": {
+                    "stt_count": len(self.conversation_data['stt_results']),
+                    "llm_count": len(self.conversation_data['llm_responses']),
+                    "tts_count": len(self.conversation_data['tts_messages'])
+                },
+                "intercepted_audio_count": len(self.intercepted_audio_data),
+                **self.stats,
+                "runtime_seconds": round(time.time() - self.stats['start_time'], 2)
+            }
+
+        @self.app.post("/inject-test")
+        async def test_injection():
+            """测试音频注入功能"""
+            success = await self.test_audio_injection()
+            return {"injection_test": "success" if success else "failed"}
+
+        @self.app.get("/conversation/history")
+        async def get_conversation_history():
+            """获取对话历史API"""
+            return {
+                "conversation_data": self.conversation_data,
+                "audio_history_count": len(self.intercepted_audio_data),
+                "total_messages": (
+                    len(self.conversation_data['stt_results']) +
+                    len(self.conversation_data['llm_responses']) +
+                    len(self.conversation_data['tts_messages'])
+                )
+            }
+
+        @self.app.delete("/conversation/history")
+        async def clear_conversation_history():
+            """清除对话历史API"""
+            self.conversation_data = {
+                'stt_results': [],
+                'llm_responses': [],
+                'tts_messages': []
+            }
+            self.intercepted_audio_data = []
+            return {"message": "对话历史已清除"}
+
+    def check_zoev3_connection(self) -> str:
+        """检查Zoev3连接状态"""
+        # 先尝试获取Application实例
+        if self.get_zoev3_application_instance():
+            return "connected"
+
+        # 检查是否有python进程运行main.py
+        import psutil
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                cmdline = proc.info['cmdline']
+                if (cmdline and
+                    'python' in cmdline[0] and
+                    'main.py' in ' '.join(cmdline)):
+                    return "detected"
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return "not_found"
+
+    async def initialize_opus_encoder(self):
+        """初始化OPUS编码器"""
+        try:
+            logger.info("🎵 初始化OPUS编码器...")
+
+            self.opus_encoder = opuslib.Encoder(
+                16000,  # 16kHz 采样率
+                1,      # 单声道
+                opuslib.APPLICATION_AUDIO
+            )
+
+            logger.info("✅ OPUS编码器初始化成功")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ OPUS编码器初始化失败: {e}")
+            return False
+
+    def start_recording_session(self, client_id: str):
+        """开始录音会话"""
+        import uuid
+        session_id = str(uuid.uuid4())[:8]
+        session_data = {
+            'session_id': session_id,
+            'client_id': client_id,
+            'start_time': time.time(),
+            'opus_frames': [],
+            'total_frames': 0,
+            'total_bytes': 0
+        }
+        self.recording_sessions[client_id] = session_data
+        logger.info(f"🎬 开始录音会话 [{session_id}] 客户端: {client_id}")
+        return session_data
+
+    def add_audio_frame(self, client_id: str, opus_data: bytes):
+        """添加音频帧到录音会话"""
+        if client_id in self.recording_sessions:
+            session = self.recording_sessions[client_id]
+            session['opus_frames'].append(opus_data)
+            session['total_frames'] += 1
+            session['total_bytes'] += len(opus_data)
+            logger.debug(f"📦 添加音频帧到会话 [{session['session_id']}]: {len(opus_data)}字节")
+
+    async def end_recording_session(self, client_id: str):
+        """结束录音会话并保存文件"""
+        if client_id not in self.recording_sessions:
+            logger.warning(f"⚠️ 客户端 {client_id} 没有活跃的录音会话")
+            return None
+
+        session = self.recording_sessions[client_id]
+        session_id = session['session_id']
+        duration = time.time() - session['start_time']
+
+        try:
+            # 保存录音文件
+            filename = f"recording_{session_id}_{int(time.time())}.opus"
+            filepath = os.path.join(self.temp_dir, filename)
+
+            with open(filepath, 'wb') as f:
+                for opus_frame in session['opus_frames']:
+                    f.write(opus_frame)
+
+            # 详细统计信息
+            file_size = os.path.getsize(filepath)
+            logger.info(f"✅ 录音会话 [{session_id}] 已完成:")
+            logger.info(f"   📂 文件: {filepath}")
+            logger.info(f"   ⏱️  时长: {duration:.2f}秒")
+            logger.info(f"   📦 帧数: {session['total_frames']}")
+            logger.info(f"   💾 大小: {file_size} 字节")
+            logger.info(f"   🎵 格式: OPUS 60ms帧 16kHz 单声道")
+
+            # 返回录音信息
+            recording_info = {
+                'session_id': session_id,
+                'filepath': filepath,
+                'filename': filename,
+                'duration': duration,
+                'frames': session['total_frames'],
+                'size': file_size,
+                'success': True
+            }
+
+            # 清理会话
+            del self.recording_sessions[client_id]
+
+            return recording_info
+
+        except Exception as e:
+            logger.error(f"❌ 保存录音文件失败 [{session_id}]: {e}")
+            # 清理会话
+            if client_id in self.recording_sessions:
+                del self.recording_sessions[client_id]
+            return {
+                'session_id': session_id,
+                'success': False,
+                'error': str(e)
+            }
+
+    async def handle_audio_websocket(self, websocket: WebSocket):
+        """处理WebSocket音频连接"""
+        await websocket.accept()
+        self.active_connections.add(websocket)
+        client_addr = websocket.client.host if websocket.client else "unknown"
+
+        # 保存WebSocket连接用于日志转发
+        self.websocket_connections[client_addr] = websocket
+
+        logger.info(f"🔗 新的音频桥接连接: {client_addr}")
+
+        try:
+            # 发送欢迎消息
+            welcome_msg = {
+                "type": "bridge_welcome",
+                "message": "Zoev3音频桥接连接已建立",
+                "zoev3_status": self.check_zoev3_connection(),
+                "features": {
+                    "audio_bridge": True,
+                    "conversation_monitoring": True,
+                    "tts_interception": True,
+                    "stt_forwarding": True,
+                    "llm_forwarding": True
+                }
+            }
+            await websocket.send_text(json.dumps(welcome_msg))
+            logger.info(f"📤 已发送欢迎消息给客户端: {client_addr}")
+
+            # 发送初始日志消息
+            await self.send_log_to_frontend(client_addr, "🔗 桥接器连接已建立，准备接收音频数据")
+
+            # 音频数据处理循环
+            while True:
+                message = await websocket.receive()
+
+                if message['type'] == 'websocket.receive':
+                    if 'text' in message:
+                        # 处理控制消息
+                        try:
+                            control_msg = json.loads(message['text'])
+                            if control_msg.get('type') == 'start_recording':
+                                session = self.start_recording_session(client_addr)
+
+                                # 发送控制消息到Zoev3让其自动开始录音
+                                try:
+                                    control_data = json.dumps({'type': 'start_recording'}).encode('utf-8')
+                                    headers = {'Content-Type': 'application/json'}
+                                    response_zoev3 = requests.post('http://localhost:8890/audio',
+                                                                  data=control_data, headers=headers, timeout=5)
+                                    logger.info(f"🎬 已发送开始录音控制信号到Zoev3: {response_zoev3.status_code}")
+                                except Exception as e:
+                                    logger.error(f"❌ 发送开始录音控制信号失败: {e}")
+
+                                response = {
+                                    'type': 'recording_started',
+                                    'session_id': session['session_id']
+                                }
+                                await websocket.send_text(json.dumps(response))
+                            elif control_msg.get('type') == 'stop_recording':
+                                # 发送控制消息到Zoev3让其自动停止录音
+                                try:
+                                    control_data = json.dumps({'type': 'stop_recording'}).encode('utf-8')
+                                    headers = {'Content-Type': 'application/json'}
+                                    response_zoev3 = requests.post('http://localhost:8890/audio',
+                                                                  data=control_data, headers=headers, timeout=5)
+                                    logger.info(f"⏹️ 已发送停止录音控制信号到Zoev3: {response_zoev3.status_code}")
+                                except Exception as e:
+                                    logger.error(f"❌ 发送停止录音控制信号失败: {e}")
+
+                                recording_info = await self.end_recording_session(client_addr)
+                                response = {
+                                    'type': 'recording_stopped',
+                                    'recording': recording_info
+                                }
+                                await websocket.send_text(json.dumps(response))
+                            elif control_msg.get('type') == 'get_conversation_history':
+                                # 获取对话历史
+                                history = {
+                                    'type': 'conversation_history',
+                                    'data': self.conversation_data,
+                                    'audio_history_count': len(self.intercepted_audio_data)
+                                }
+                                await websocket.send_text(json.dumps(history))
+                            elif control_msg.get('type') == 'clear_conversation_history':
+                                # 清除对话历史
+                                self.conversation_data = {
+                                    'stt_results': [],
+                                    'llm_responses': [],
+                                    'tts_messages': []
+                                }
+                                self.intercepted_audio_data = []
+                                response = {
+                                    'type': 'conversation_cleared',
+                                    'message': '对话历史已清除'
+                                }
+                                await websocket.send_text(json.dumps(response))
+                        except json.JSONDecodeError:
+                            logger.warning(f"⚠️ 无效的控制消息: {message['text']}")
+                    elif 'bytes' in message:
+                        # 处理音频数据
+                        audio_data = message['bytes']
+                        logger.debug(f"🎵 从 {client_addr} 接收到音频数据: {len(audio_data)} 字节")
+                        await self.process_and_inject_audio(audio_data, websocket, client_addr)
+
+        except WebSocketDisconnect:
+            logger.info(f"🔌 音频桥接连接断开: {client_addr}")
+        except Exception as e:
+            logger.error(f"❌ 音频桥接处理错误: {e}")
+            import traceback
+            logger.error(f"❌ 详细错误信息: {traceback.format_exc()}")
+        finally:
+            self.active_connections.discard(websocket)
+            # 清理WebSocket连接记录
+            if client_addr in self.websocket_connections:
+                del self.websocket_connections[client_addr]
+
+    async def process_and_inject_audio(self, audio_data: bytes, websocket: WebSocket, client_addr: str):
+        """处理音频数据并注入到Zoev3"""
+        try:
+            self.stats['web_packets_received'] += 1
+
+            # 转换音频数据
+            pcm_data = np.frombuffer(audio_data, dtype=np.int16)
+
+            if len(pcm_data) < 960:  # 最小帧大小检查 (60ms @ 16kHz)
+                return
+
+            # OPUS编码
+            if self.opus_encoder:
+                frame_size = min(len(pcm_data), 960)  # 60ms帧
+                frame_data = pcm_data[:frame_size]
+                pcm_bytes = frame_data.astype(np.int16).tobytes()
+
+                try:
+                    opus_data = self.opus_encoder.encode(pcm_bytes, frame_size)
+                    if opus_data:
+                        self.stats['opus_packets_created'] += 1
+
+                        # 如果有活跃的录音会话，保存OPUS数据
+                        if client_addr in self.recording_sessions:
+                            self.add_audio_frame(client_addr, opus_data)
+
+                        # 注入到Zoev3
+                        injection_success = await self.inject_to_zoev3(opus_data)
+
+                        if injection_success:
+                            self.stats['zoev3_injections'] += 1
+
+                        # 发送详细的处理日志到前端
+                        await self.send_log_to_frontend(
+                            client_addr,
+                            f"🎵 OPUS编码成功: {len(opus_data)}字节 | 注入结果: {'✅' if injection_success else '❌'}"
+                        )
+
+                        # 每50包发送一次状态更新
+                        if self.stats['opus_packets_created'] % 50 == 0:
+                            status_msg = {
+                                "type": "bridge_status",
+                                "opus_packets": self.stats['opus_packets_created'],
+                                "zoev3_injections": self.stats['zoev3_injections'],
+                                "injection_success": injection_success
+                            }
+                            await websocket.send_text(json.dumps(status_msg))
+                            await self.send_log_to_frontend(
+                                client_addr,
+                                f"📊 状态更新: OPUS包={self.stats['opus_packets_created']}, 注入成功={self.stats['zoev3_injections']}"
+                            )
+
+                except Exception as e:
+                    logger.warning(f"⚠️ OPUS编码失败: {e}")
+
+        except Exception as e:
+            logger.error(f"❌ 音频处理和注入失败: {e}")
+
+    def get_zoev3_application_instance(self):
+        """获取运行中的Zoev3 Application实例"""
+        if self.zoev3_app_instance:
+            return self.zoev3_app_instance
+
+        try:
+            # 通过gc查找Application实例
+            for obj in gc.get_objects():
+                if hasattr(obj, '__class__') and obj.__class__.__name__ == 'Application':
+                    # 检查是否是Zoev3的Application实例
+                    if (hasattr(obj, '_on_encoded_audio') and
+                        hasattr(obj, 'audio_codec') and
+                        obj.audio_codec is not None):
+                        self.zoev3_app_instance = obj
+                        logger.info("✅ 找到Zoev3 Application实例")
+                        return obj
+        except Exception as e:
+            logger.warning(f"⚠️ 搜索Zoev3实例失败: {e}")
+
+        return None
+
+    def setup_zoev3_monitoring(self):
+        """设置Zoev3系统监听和拦截"""
+        try:
+            app_instance = self.get_zoev3_application_instance()
+            if app_instance:
+                # 保存原始方法的引用
+                original_handle_tts = getattr(app_instance, '_handle_tts_message', None)
+                original_handle_stt = getattr(app_instance, '_handle_stt_message', None)
+                original_handle_llm = getattr(app_instance, '_handle_llm_response', None)
+                original_on_incoming_audio = getattr(app_instance, '_on_incoming_audio', None)
+
+                # 创建拦截方法
+                async def intercepted_handle_tts(data):
+                    """拦截TTS消息"""
+                    logger.info(f"🎤 拦截到TTS消息: {data}")
+                    self.conversation_data['tts_messages'].append({
+                        'timestamp': time.time(),
+                        'data': data
+                    })
+
+                    # 转发给Web端
+                    await self.broadcast_to_web_clients({
+                        'type': 'tts_message',
+                        'data': data,
+                        'timestamp': time.time()
+                    })
+
+                    # 调用原始方法
+                    if original_handle_tts:
+                        return await original_handle_tts(data)
+
+                async def intercepted_handle_stt(data):
+                    """拦截STT消息"""
+                    logger.info(f"🎤 拦截到STT消息: {data}")
+                    self.conversation_data['stt_results'].append({
+                        'timestamp': time.time(),
+                        'data': data
+                    })
+
+                    # 转发给Web端
+                    await self.broadcast_to_web_clients({
+                        'type': 'stt_result',
+                        'data': data,
+                        'timestamp': time.time()
+                    })
+
+                    # 调用原始方法
+                    if original_handle_stt:
+                        return await original_handle_stt(data)
+
+                async def intercepted_handle_llm(data):
+                    """拦截LLM响应"""
+                    logger.info(f"🤖 拦截到LLM响应: {data}")
+                    self.conversation_data['llm_responses'].append({
+                        'timestamp': time.time(),
+                        'data': data
+                    })
+
+                    # 转发给Web端
+                    await self.broadcast_to_web_clients({
+                        'type': 'llm_response',
+                        'data': data,
+                        'timestamp': time.time()
+                    })
+
+                    # 调用原始方法
+                    if original_handle_llm:
+                        return await original_handle_llm(data)
+
+                def intercepted_on_incoming_audio(data):
+                    """拦截音频播放数据"""
+                    logger.info(f"🔊 拦截到音频数据: {len(data)} 字节")
+
+                    # 存储音频数据
+                    self.intercepted_audio_data.append({
+                        'timestamp': time.time(),
+                        'data': data,
+                        'size': len(data)
+                    })
+
+                    # 转发音频数据给Web端
+                    asyncio.create_task(self.broadcast_audio_to_web_clients(data))
+
+                    # 阻止原始音频播放 - 关键修改点
+                    logger.info("🚫 阻止Zoev3本地音频播放，转发到Web端")
+                    # 不调用原始方法，音频将在Web端播放
+                    return
+
+                # 替换方法
+                if original_handle_tts:
+                    app_instance._handle_tts_message = intercepted_handle_tts
+                    logger.info("✅ 已设置TTS消息拦截")
+
+                if original_handle_stt:
+                    app_instance._handle_stt_message = intercepted_handle_stt
+                    logger.info("✅ 已设置STT消息拦截")
+
+                if original_handle_llm:
+                    app_instance._handle_llm_response = intercepted_handle_llm
+                    logger.info("✅ 已设置LLM响应拦截")
+
+                if original_on_incoming_audio:
+                    app_instance._on_incoming_audio = intercepted_on_incoming_audio
+                    logger.info("✅ 已设置音频播放拦截")
+
+                return True
+        except Exception as e:
+            logger.error(f"❌ 设置Zoev3监听失败: {e}")
+        return False
+
+    async def broadcast_to_web_clients(self, message: dict):
+        """广播消息到所有Web客户端"""
+        if not self.websocket_connections:
+            return
+
+        message_json = json.dumps(message)
+        disconnected_clients = []
+
+        for client_addr, websocket in self.websocket_connections.items():
+            try:
+                await websocket.send_text(message_json)
+                logger.debug(f"📤 已发送消息给客户端 {client_addr}: {message['type']}")
+            except Exception as e:
+                logger.warning(f"⚠️ 发送消息给客户端 {client_addr} 失败: {e}")
+                disconnected_clients.append(client_addr)
+
+        # 清理断开的连接
+        for client_addr in disconnected_clients:
+            if client_addr in self.websocket_connections:
+                del self.websocket_connections[client_addr]
+
+    async def broadcast_audio_to_web_clients(self, audio_data: bytes):
+        """广播音频数据到所有Web客户端"""
+        if not self.websocket_connections:
+            return
+
+        # 构造音频消息
+        audio_message = {
+            'type': 'audio_data',
+            'size': len(audio_data),
+            'timestamp': time.time()
+        }
+
+        disconnected_clients = []
+
+        for client_addr, websocket in self.websocket_connections.items():
+            try:
+                # 先发送音频元数据
+                await websocket.send_text(json.dumps(audio_message))
+                # 再发送音频数据
+                await websocket.send_bytes(audio_data)
+                logger.debug(f"🔊 已发送音频数据给客户端 {client_addr}: {len(audio_data)} 字节")
+            except Exception as e:
+                logger.warning(f"⚠️ 发送音频数据给客户端 {client_addr} 失败: {e}")
+                disconnected_clients.append(client_addr)
+
+        # 清理断开的连接
+        for client_addr in disconnected_clients:
+            if client_addr in self.websocket_connections:
+                del self.websocket_connections[client_addr]
+
+    async def inject_to_zoev3(self, opus_data: bytes) -> bool:
+        """将OPUS数据直接注入到Zoev3的音频接口"""
+        try:
+            logger.info(f"🌉 [BRIDGE-STEP-1] 开始注入OPUS数据到Zoev3: {len(opus_data)} 字节")
+
+            # 方案1: HTTP POST到Zoev3的音频API端点
+            try:
+                logger.info("🌉 [BRIDGE-STEP-2] 尝试HTTP POST方式注入")
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        'http://localhost:8890/audio',
+                        data=opus_data,
+                        headers={'Content-Type': 'application/octet-stream'},
+                        timeout=aiohttp.ClientTimeout(total=2.0)
+                    ) as response:
+                        if response.status == 200:
+                            logger.info(f"✅ [BRIDGE-SUCCESS] HTTP音频数据已发送到Zoev3: {len(opus_data)} 字节")
+                            return True
+                        else:
+                            logger.warning(f"⚠️ [BRIDGE-WARNING] HTTP请求失败，状态码: {response.status}")
+            except Exception as http_error:
+                logger.warning(f"⚠️ [BRIDGE-WARNING] HTTP注入失败: {http_error}，尝试直接调用")
+
+            # 方案2: 直接调用Zoev3的_on_encoded_audio方法（备用方案）
+            app_instance = self.get_zoev3_application_instance()
+            if app_instance and hasattr(app_instance, '_on_encoded_audio'):
+                # 直接调用音频处理接口
+                app_instance._on_encoded_audio(opus_data)
+                logger.debug(f"📤 音频数据已直接注入Zoev3: {len(opus_data)} 字节")
+                return True
+
+            logger.error("❌ 所有音频注入方案都失败")
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ 音频注入失败: {e}")
+            return False
+
+    async def test_audio_injection(self) -> bool:
+        """测试音频注入功能"""
+        try:
+            # 创建测试音频数据 (60ms @ 16kHz)
+            test_audio = np.random.randint(-1000, 1000, 960, dtype=np.int16)
+            test_bytes = test_audio.tobytes()
+
+            if self.opus_encoder:
+                opus_data = self.opus_encoder.encode(test_bytes, 960)
+                return await self.inject_to_zoev3(opus_data)
+
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ 音频注入测试失败: {e}")
+            return False
+
+# 注意：不需要桥接器自己的监听器，Zoev3会处理文件系统注入
+
+async def main():
+    """主函数"""
+    bridge = Zoev3AudioBridge()
+
+    # 初始化OPUS编码器
+    if await bridge.initialize_opus_encoder():
+        logger.info("✅ 音频桥接器初始化成功")
+    else:
+        logger.error("❌ 音频桥接器初始化失败")
+        return
+
+    # Zoev3会自己处理文件系统注入，不需要额外监听器
+
+    # 检查Zoev3状态
+    zoev3_status = bridge.check_zoev3_connection()
+    logger.info(f"🔍 Zoev3状态检查: {zoev3_status}")
+
+    # 设置Zoev3监听
+    if bridge.setup_zoev3_monitoring():
+        logger.info("✅ Zoev3系统监听设置成功")
+    else:
+        logger.warning("⚠️ Zoev3系统监听设置失败，部分功能可能不可用")
+
+    logger.info("🚀 启动Zoev4 → Zoev3 音频桥接服务器...")
+    logger.info("📖 测试页面: http://localhost:8004/")
+    logger.info("📊 桥接状态: http://localhost:8004/status")
+    logger.info("🧪 注入测试: http://localhost:8004/inject-test")
+
+    config = uvicorn.Config(
+        app=bridge.app,
+        host="localhost",
+        port=8004,  # 使用新端口避免冲突
+        log_level="debug"
+    )
+
+    server_instance = uvicorn.Server(config)
+    await server_instance.serve()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("👋 音频桥接服务器已停止")
+    except Exception as e:
+        logger.error(f"❌ 服务器启动失败: {e}")
+        sys.exit(1)
